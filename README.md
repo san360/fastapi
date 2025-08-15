@@ -132,6 +132,18 @@ pip install -r requirements.txt
 pip list
 ```
 
+#### Key Dependencies
+
+- **FastAPI**: Modern web framework for building APIs
+- **Uvicorn**: ASGI server for running FastAPI applications  
+- **Microsoft Agents SDK**: Core packages for bot functionality
+  - `microsoft-agents-activity`: Activity processing
+  - `microsoft-agents-hosting-core`: Core hosting functionality
+  - `microsoft-agents-hosting-aiohttp`: aiohttp integration
+  - `microsoft-agents-authentication-msal`: MSAL authentication
+- **aiohttp**: HTTP client for external API calls
+- **python-dotenv**: Environment variable loading
+
 ### 4. Configure Environment Variables
 
 ```bash
@@ -191,12 +203,14 @@ python main.py
 
 ### Production Mode
 ```bash
-# Using uvicorn directly
-uvicorn src.fastapi_simple:app --host 0.0.0.0 --port 3978
-
-# Or using the main entry point
+# Start the application (recommended)
 python main.py
+
+# Alternative: Using uvicorn with app factory (for deployment)
+uvicorn src.app_factory:create_app --factory --host 0.0.0.0 --port 3978
 ```
+
+**Note**: For external deployment platforms, you can use the `create_app` factory function from `src.app_factory` to get a configured FastAPI instance.
 
 The server will start at: `http://localhost:3978`
 
@@ -209,6 +223,32 @@ The server will start at: `http://localhost:3978`
 | `/api/messages` | POST | Bot Framework message endpoint |
 | `/docs` | GET | FastAPI interactive documentation |
 | `/redoc` | GET | ReDoc API documentation |
+
+## 🤖 Bot Commands
+
+The application supports the following bot commands when interacting through Bot Framework:
+
+| Command | Description | Authentication Required |
+|---------|-------------|------------------------|
+| `/status`, `/auth status`, `/check status` | Check authentication status for Graph and GitHub | None |
+| `/logout` | Sign out from all authentication handlers | None |
+| `/me`, `/profile` | Get user profile from Microsoft Graph | Microsoft Graph |
+| `/prs`, `/pull requests` | Get pull requests from GitHub (octocat/Hello-World repo) | GitHub |
+
+### Usage Examples
+
+```text
+User: /status
+Bot: Welcome to the FastAPI auto-signin demo
+     Graph status: Connected
+     GitHub status: Not connected
+
+User: /me  
+Bot: [Displays user profile card with Microsoft Graph data]
+
+User: /prs
+Bot: [Displays GitHub profile and recent pull requests]
+```
 
 ## 🧪 Testing the Application
 
@@ -265,35 +305,39 @@ sequenceDiagram
 
 ## 📁 Project Structure
 
-```
+```text
 fastapi-auto-signin-agent/
 ├── main.py                 # 🎯 Single entry point
-├── requirements.txt        # 📦 Python dependencies
+├── requirements.txt        # 📦 Python dependencies  
 ├── .env                   # 🔐 Environment variables (create from template)
+├── .gitignore            # 🚫 Git ignore patterns
 ├── env.TEMPLATE          # 📝 Environment template
 └── src/
-    ├── config.py         # ⚙️ Configuration management
-    ├── server.py         # 🚀 Server startup
-    ├── app_factory.py    # 🏭 FastAPI app factory
-    ├── api_routes.py     # 🛣️ API route definitions
-    ├── auth_middleware.py # 🔒 JWT authentication
-    ├── message_handler.py # 📝 Message processing
-    ├── request_adapter.py # 🔄 FastAPI/aiohttp bridge
-    ├── agent.py          # 🤖 Bot agent logic
-    ├── github_api_client.py # 🐙 GitHub integration
-    ├── user_graph_client.py # 📊 Microsoft Graph integration
-    └── cards.py          # 🃏 Adaptive card templates
+    ├── config.py         # ⚙️ Configuration management (46 lines)
+    ├── server.py         # 🚀 Server startup (26 lines)
+    ├── app_factory.py    # 🏭 FastAPI app factory (68 lines)
+    ├── api_routes.py     # 🛣️ API route definitions (38 lines)
+    ├── auth_middleware.py # 🔒 JWT authentication (89 lines)
+    ├── message_handler.py # 📝 Message processing (93 lines)
+    ├── request_adapter.py # 🔄 FastAPI/aiohttp bridge (100 lines)
+    ├── agent.py          # 🤖 Bot agent logic (140 lines)
+    ├── github_api_client.py # 🐙 GitHub integration (56 lines)
+    ├── user_graph_client.py # 📊 Microsoft Graph integration (17 lines)
+    ├── cards.py          # 🃏 Adaptive card templates (100 lines)
+    └── __pycache__/      # 🗂️ Python bytecode cache
 ```
 
 ## 🔧 Development
 
 ### Code Style
+
 - Follows **SOLID principles**
-- Each file under **100 lines**
+- Most files under **100 lines** (agent.py: 140 lines, cards.py: 100 lines)  
 - **Clean architecture** with separation of concerns
 - **Type hints** for better code quality
 
 ### Adding New Features
+
 1. Create new module in `src/`
 2. Update `app_factory.py` if needed
 3. Add routes to `api_routes.py`
