@@ -1,201 +1,347 @@
-# Auto Sign-In Sample - FastAPI Version
+# FastAPI Auto Sign-In Agent
 
-This Agent has been created using [Microsoft 365 Agents SDK](https://github.com/microsoft/agents-for-python) with FastAPI instead of aiohttp, showing how to use Auto SignIn user authorization in your Agent with a modern FastAPI web framework.
+A Microsoft Agents SDK-powered FastAPI application that provides automated sign-in capabilities for Microsoft Graph and GitHub APIs. This application demonstrates clean architecture principles with modular design and SOLID principles.
 
-This sample demonstrates the same functionality as the original auto-signin sample but uses FastAPI for better performance, automatic API documentation, and enhanced developer experience.
+## 🏗️ Architecture Overview
 
-## Key Features
-
-- **FastAPI Integration**: Modern Python web framework with automatic API documentation
-- **Authentication Handlers**: Support for Microsoft Graph and GitHub OAuth
-- **Health Check Endpoints**: Built-in health monitoring endpoints
-- **Enhanced Error Handling**: Improved error responses and logging
-- **Type Safety**: Better type hints and validation
-
-## API Endpoints
-
-The FastAPI implementation provides additional endpoints:
-
-- `POST /api/messages` - Main bot framework message endpoint
-- `GET /` - Root endpoint for basic status
-- `GET /health` - Health check endpoint
-- `GET /docs` - Automatic API documentation (Swagger UI)
-- `GET /redoc` - Alternative API documentation
-
-## Agent Commands
-
-This sample uses different routes configured with auth handlers:
-
-```python
-@AGENT_APP.message("/status")
-@AGENT_APP.message("/logout") 
-@AGENT_APP.message("/me", auth_handlers=["GRAPH"])
-@AGENT_APP.message("/prs", auth_handlers=["GITHUB"])
+```mermaid
+graph TB
+    subgraph "Client"
+        U[User/Bot Framework]
+    end
+    
+    subgraph "FastAPI Application"
+        M[main.py] --> S[server.py]
+        S --> AF[app_factory.py]
+        AF --> R[api_routes.py]
+        AF --> AM[auth_middleware.py]
+        AF --> C[config.py]
+        
+        R --> MH[message_handler.py]
+        MH --> RA[request_adapter.py]
+        RA --> A[agent.py]
+        
+        A --> GAC[github_api_client.py]
+        A --> UGC[user_graph_client.py]
+        A --> Cards[cards.py]
+    end
+    
+    subgraph "Azure Services"
+        AAD[Azure Active Directory]
+        BF[Bot Framework Service]
+        MSGraph[Microsoft Graph API]
+    end
+    
+    subgraph "External APIs"
+        GitHub[GitHub API]
+    end
+    
+    U -->|HTTP Requests| R
+    AM -->|JWT Validation| AAD
+    A -->|Auth Tokens| BF
+    UGC -->|User Data| MSGraph
+    GAC -->|Repository Data| GitHub
+    
+    classDef azure fill:#0078d4,stroke:#005a9e,stroke-width:2px,color:#fff
+    classDef external fill:#24292e,stroke:#1b1f23,stroke-width:2px,color:#fff
+    classDef app fill:#00d4aa,stroke:#00a085,stroke-width:2px,color:#fff
+    
+    class AAD,BF,MSGraph azure
+    class GitHub external
+    class M,S,AF,R,AM,C,MH,RA,A,GAC,UGC,Cards app
 ```
 
-### Available Commands
+## 🛠️ Prerequisites
 
-- `/status` or `/auth status` - Check authentication status for all handlers
-- `/logout` - Sign out from all authentication handlers
-- `/me` or `/profile` - Get user profile from Microsoft Graph (requires GRAPH auth)
-- `/prs` or `/pull requests` - Get GitHub profile and pull requests (requires GITHUB auth)
+- **Python 3.8+**
+- **Azure Active Directory App Registration**
+- **Bot Framework Registration**
+- **Microsoft Graph API permissions**
+- **GitHub OAuth App (optional)**
 
-## Prerequisites
+## 📋 Azure Service Dependencies
 
-- [Python](https://www.python.org/) version 3.9 or higher
-- [dev tunnel](https://learn.microsoft.com/azure/developer/dev-tunnels/get-started?tabs=windows) (for local development)
+This application integrates with the following Azure services:
 
-## Local Setup
+### 🔐 Azure Active Directory (AAD)
+- **Purpose**: Authentication and authorization
+- **Configuration**: Client ID, Client Secret, Tenant ID
+- **Permissions Required**:
+  - `User.Read` (Microsoft Graph)
+  - `openid`, `profile`, `email`
 
-### Configure Azure Bot Service
+### 🤖 Azure Bot Service
+- **Purpose**: Bot Framework integration
+- **Configuration**: Bot registration and channels
+- **Features**: WebChat channel, Direct Line API
 
-1. [Create an Azure Bot](https://aka.ms/AgentsSDK-CreateBot)
-   - Record the Application ID, the Tenant ID, and the Client Secret for use below
+### 📊 Microsoft Graph API
+- **Purpose**: Access user profile and organizational data
+- **Endpoints Used**:
+  - `/me` - User profile information
+  - `/me/photo` - User profile photos
 
-2. Configuring the token connection in the Agent settings
-   1. Open the `env.TEMPLATE` file in the root of the sample project, rename it to `.env` and configure the following values:
-      1. Set the **CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID** to the AppId of the bot identity
-      2. Set the **CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET** to the Secret that was created for your identity
-      3. Set the **CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID** to the Tenant Id where your application is registered
+## 🚀 Getting Started
 
-3. [Add OAuth to your bot](https://aka.ms/AgentsSDK-AddAuth) using the _Azure Active Directory v2_ Provider
+### 1. Clone the Repository
 
-4. Create a second Azure Bot **OAuth Connection** using the _GitHub_ provider
-   
-   > To configure OAuth for GitHub you need a GitHub account, under settings/developer settings/OAuth apps, create a new OAuth app, and set the callback URL to `https://token.botframework.com/.auth/web/redirect`. Then provide the clientId and clientSecret, and required scopes: `user repo`
+```bash
+git clone <repository-url>
+cd fastapi-auto-signin-agent
+```
 
-5. Configure the authorization handlers in the `.env` file:
-   ```env
-   AGENTAPPLICATION__USERAUTHORIZATION__HANDLERS__GRAPH__SETTINGS__AZUREBOTOAUTHCONNECTIONNAME=your-graph-connection-name
-   AGENTAPPLICATION__USERAUTHORIZATION__HANDLERS__GITHUB__SETTINGS__AZUREBOTOAUTHCONNECTIONNAME=your-github-connection-name
+### 2. Create Python Virtual Environment
+
+#### Windows (PowerShell)
+```powershell
+# Create virtual environment
+python -m venv venv
+
+# Activate virtual environment
+.\venv\Scripts\Activate.ps1
+
+# Verify activation (should show venv path)
+Get-Command python
+```
+
+#### Windows (Command Prompt)
+```cmd
+# Create virtual environment
+python -m venv venv
+
+# Activate virtual environment
+venv\Scripts\activate.bat
+```
+
+#### macOS/Linux
+```bash
+# Create virtual environment
+python3 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate
+```
+
+### 3. Install Dependencies
+
+```bash
+# Install required packages
+pip install -r requirements.txt
+
+# Verify installation
+pip list
+```
+
+### 4. Configure Environment Variables
+
+```bash
+# Copy environment template
+cp env.TEMPLATE .env
+
+# Edit .env file with your Azure credentials
+```
+
+### 5. Configure Azure Services
+
+#### Azure AD App Registration
+1. Go to [Azure Portal](https://portal.azure.com)
+2. Navigate to **Azure Active Directory** > **App registrations**
+3. Create new registration or use existing
+4. Note down: `Client ID`, `Client Secret`, `Tenant ID`
+5. Configure redirect URIs for your bot
+
+#### Bot Framework Registration
+1. Go to [Azure Portal](https://portal.azure.com)
+2. Create **Azure Bot** resource
+3. Configure channels (Web Chat, Teams, etc.)
+4. Set messaging endpoint: `https://your-domain.com/api/messages`
+
+### 6. Environment Variables Configuration
+
+Update your `.env` file:
+
+```env
+# Azure AD Configuration
+CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID=your-client-id
+CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET=your-client-secret
+CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID=your-tenant-id
+
+# Microsoft Graph Connection
+AGENTAPPLICATION__USERAUTHORIZATION__HANDLERS__GRAPH__SETTINGS__AZUREBOTOAUTHCONNECTIONNAME=GRAPH
+
+# GitHub Connection (optional)
+AGENTAPPLICATION__USERAUTHORIZATION__HANDLERS__GITHUB__SETTINGS__AZUREBOTOAUTHCONNECTIONNAME=GITHUB
+
+# Server Configuration
+HOST=localhost
+PORT=3978
+```
+
+## 🏃‍♂️ Running the Application
+
+### Development Mode
+```bash
+# Activate virtual environment first
+# Windows: .\venv\Scripts\Activate.ps1
+# macOS/Linux: source venv/bin/activate
+
+# Start the application
+python main.py
+```
+
+### Production Mode
+```bash
+# Using uvicorn directly
+uvicorn src.fastapi_simple:app --host 0.0.0.0 --port 3978
+
+# Or using the main entry point
+python main.py
+```
+
+The server will start at: `http://localhost:3978`
+
+## 📡 API Endpoints
+
+| Endpoint | Method | Description |
+|----------|---------|-------------|
+| `/` | GET | Root endpoint with service info |
+| `/health` | GET | Health check endpoint |
+| `/api/messages` | POST | Bot Framework message endpoint |
+| `/docs` | GET | FastAPI interactive documentation |
+| `/redoc` | GET | ReDoc API documentation |
+
+## 🧪 Testing the Application
+
+### 1. Health Check
+```bash
+curl http://localhost:3978/health
+```
+
+### 2. Root Endpoint
+```bash
+curl http://localhost:3978/
+```
+
+### 3. Interactive Documentation
+Open in browser: `http://localhost:3978/docs`
+
+## 🔄 Application Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant FastAPI
+    participant AuthMiddleware
+    participant MessageHandler
+    participant Agent
+    participant Azure
+    participant APIs
+
+    User->>FastAPI: POST /api/messages
+    FastAPI->>AuthMiddleware: Validate JWT Token
+    AuthMiddleware->>Azure: Verify token with AAD
+    Azure-->>AuthMiddleware: Token validated
+    AuthMiddleware-->>FastAPI: Authentication success
+    
+    FastAPI->>MessageHandler: Process message
+    MessageHandler->>Agent: Handle user command
+    
+    alt User requests profile
+        Agent->>Azure: Get user token
+        Azure-->>Agent: Return access token
+        Agent->>APIs: Call Microsoft Graph
+        APIs-->>Agent: Return user data
+    else User requests PRs
+        Agent->>Azure: Get GitHub token
+        Azure-->>Agent: Return access token
+        Agent->>APIs: Call GitHub API
+        APIs-->>Agent: Return PR data
+    end
+    
+    Agent-->>MessageHandler: Return response
+    MessageHandler-->>FastAPI: JSON response
+    FastAPI-->>User: Bot response
+```
+
+## 📁 Project Structure
+
+```
+fastapi-auto-signin-agent/
+├── main.py                 # 🎯 Single entry point
+├── requirements.txt        # 📦 Python dependencies
+├── .env                   # 🔐 Environment variables (create from template)
+├── env.TEMPLATE          # 📝 Environment template
+└── src/
+    ├── config.py         # ⚙️ Configuration management
+    ├── server.py         # 🚀 Server startup
+    ├── app_factory.py    # 🏭 FastAPI app factory
+    ├── api_routes.py     # 🛣️ API route definitions
+    ├── auth_middleware.py # 🔒 JWT authentication
+    ├── message_handler.py # 📝 Message processing
+    ├── request_adapter.py # 🔄 FastAPI/aiohttp bridge
+    ├── agent.py          # 🤖 Bot agent logic
+    ├── github_api_client.py # 🐙 GitHub integration
+    ├── user_graph_client.py # 📊 Microsoft Graph integration
+    └── cards.py          # 🃏 Adaptive card templates
+```
+
+## 🔧 Development
+
+### Code Style
+- Follows **SOLID principles**
+- Each file under **100 lines**
+- **Clean architecture** with separation of concerns
+- **Type hints** for better code quality
+
+### Adding New Features
+1. Create new module in `src/`
+2. Update `app_factory.py` if needed
+3. Add routes to `api_routes.py`
+4. Update tests and documentation
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **Port already in use**
+   ```bash
+   # Change port in .env file
+   PORT=3979
    ```
 
-6. Run `dev tunnels`. See [Create and host a dev tunnel](https://learn.microsoft.com/azure/developer/dev-tunnels/get-started?tabs=windows):
+2. **Authentication errors**
+   - Verify Azure AD app registration
+   - Check client ID/secret in .env
+   - Ensure proper permissions granted
+
+3. **Module import errors**
    ```bash
-   devtunnel host -p 3978 --allow-anonymous
-   ```
-
-7. Take note of the URL shown after `Connect via browser:`
-
-8. On the Azure Bot, select **Settings**, then **Configuration**, and update the **Messaging endpoint** to `{tunnel-url}/api/messages`
-
-### Running the Agent
-
-1. Open this folder from your IDE or Terminal
-2. (Optional but recommended) Set up virtual environment and activate it:
-   ```bash
-   python -m venv venv
-   # On Windows
-   venv\Scripts\activate
-   # On macOS/Linux  
-   source venv/bin/activate
-   ```
-
-3. Install dependencies:
-   ```bash
+   # Ensure virtual environment is activated
+   # Reinstall dependencies
    pip install -r requirements.txt
    ```
 
-4. Start the FastAPI application:
-   ```bash
-   python -m src.main
-   ```
-   
-   Or alternatively, you can use uvicorn directly:
-   ```bash
-   uvicorn src.main:app --host localhost --port 3978 --reload
-   ```
-
-At this point you should see the message:
-```text
-INFO:     Started server process [xxxx]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://localhost:3978 (Press CTRL+C to quit)
-```
-
-The agent is ready to accept messages.
-
-## FastAPI Specific Features
-
-### Automatic API Documentation
-
-Once the server is running, you can access:
-
-- **Swagger UI**: `http://localhost:3978/docs`
-- **ReDoc**: `http://localhost:3978/redoc`
-
-These provide interactive API documentation automatically generated from your FastAPI application.
-
-### Health Monitoring
-
-- **Root Endpoint**: `GET http://localhost:3978/` - Basic status check
-- **Health Check**: `GET http://localhost:3978/health` - Detailed health information
-
-### Enhanced Error Handling
-
-The FastAPI version includes improved error handling with:
-- Structured error responses
-- Better logging of exceptions
-- HTTP status codes that follow REST conventions
-
-## Accessing the Agent
-
-### Using the Agent in WebChat
-
-1. Go to your Azure Bot Service resource in the Azure Portal and select **Test in WebChat**
-2. When the conversation starts, you will be greeted with a welcome message
-3. Send `/status` to check authentication status
-4. Send `/me` to trigger the Microsoft Graph OAuth flow and display your profile
-5. Send `/prs` to trigger the GitHub OAuth flow and display pull requests
-
-### Development and Testing
-
-For local development, you can also test the endpoints directly:
-
+### Logs
+Check application logs for detailed error information:
 ```bash
-# Check health
-curl http://localhost:3978/health
-
-# View API documentation
-# Open http://localhost:3978/docs in your browser
+python main.py 2>&1 | tee app.log
 ```
 
-## Differences from Original Implementation
+## 📚 Documentation
 
-### 1. **Web Framework**: 
-   - **Original**: aiohttp
-   - **FastAPI**: FastAPI with uvicorn
+- **FastAPI Docs**: Available at `/docs` when running
+- **Microsoft Agents SDK**: [Official Documentation](https://docs.microsoft.com/en-us/azure/bot-service/)
+- **Azure AD**: [App Registration Guide](https://docs.microsoft.com/en-us/azure/active-directory/develop/)
 
-### 2. **Server Startup**:
-   - **Original**: `run_app()` from aiohttp
-   - **FastAPI**: `uvicorn.run()` with FastAPI app
+## 🤝 Contributing
 
-### 3. **Middleware**:
-   - **Original**: aiohttp middleware
-   - **FastAPI**: FastAPI middleware decorators
+1. Fork the repository
+2. Create feature branch: `git checkout -b feature/new-feature`
+3. Make changes following code style guidelines
+4. Add tests for new functionality
+5. Submit pull request
 
-### 4. **Error Handling**:
-   - **Original**: Basic exception handling
-   - **FastAPI**: HTTP exceptions with proper status codes
+## 📜 License
 
-### 5. **Additional Features**:
-   - Automatic API documentation
-   - Health check endpoints
-   - Better type hints and validation
-   - Enhanced logging and error messages
-
-## Troubleshooting
-
-1. **Import Errors**: Ensure all dependencies are installed with `pip install -r requirements.txt`
-2. **Port Conflicts**: Change the PORT environment variable if 3978 is in use
-3. **Authentication Issues**: Verify your `.env` file has the correct OAuth connection names
-4. **Dev Tunnel**: Make sure your dev tunnel is running and the messaging endpoint is correctly configured
-
-## Next Steps
-
-- Explore the automatic API documentation at `/docs`
-- Add custom FastAPI endpoints for additional functionality  
-- Implement request/response models using Pydantic
-- Add FastAPI dependencies for dependency injection
-- Configure CORS if needed for web client integration
+Copyright (c) Microsoft Corporation. All rights reserved.
+Licensed under the MIT License.
