@@ -242,25 +242,56 @@ chmod +x docker-run.sh
 1. **Setup Environment Variables**
    ```bash
    # Copy and configure environment file
-   cp env.TEMPLATE .env
+   cp .env.docker .env
    
    # Edit .env with your Azure credentials
-   # The docker-compose.yml will automatically use these variables
+   # IMPORTANT: Ensure HOST=0.0.0.0 for Docker containers
    ```
 
 2. **Build and Run with Docker Compose**
    ```bash
-   # Build and start the container
+   # First time build and start
    docker-compose up --build
    
-   # Run in detached mode (background)
+   # Run in detached mode (background) - recommended for production
    docker-compose up -d --build
    
-   # View logs
+   # Build without starting (useful for CI/CD)
+   docker-compose build
+   
+   # Start existing containers without rebuilding
+   docker-compose up -d
+   ```
+
+3. **Container Management**
+   ```bash
+   # View logs in real-time
    docker-compose logs -f fastapi-agent
    
-   # Stop the container
+   # Check container status
+   docker-compose ps
+   
+   # Restart the service
+   docker-compose restart fastapi-agent
+   
+   # Stop and remove containers
    docker-compose down
+   
+   # Stop, remove containers, and remove volumes
+   docker-compose down -v
+   ```
+
+4. **Development Workflow**
+   ```bash
+   # Make code changes, then rebuild and restart
+   docker-compose up -d --build
+   
+   # Or rebuild specific service
+   docker-compose build fastapi-agent
+   docker-compose up -d
+   
+   # Force recreate containers (useful after config changes)
+   docker-compose up -d --force-recreate
    ```
 
 #### Using Docker Directly
@@ -328,6 +359,123 @@ PORT=3978
 ```
 
 **Note**: When running in Docker, always use `HOST=0.0.0.0` instead of `localhost` to allow external connections to the container.
+
+#### Docker Compose Configuration Details
+
+The `docker-compose.yml` file provides a complete container orchestration setup:
+
+```yaml
+services:
+  fastapi-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastapi-auto-signin-agent
+    ports:
+      - "3978:3978"
+    environment:
+      # FastAPI Configuration
+      - HOST=0.0.0.0
+      - PORT=3978
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3978/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+```
+
+**Configuration Breakdown:**
+
+- **`build`**: Builds the image from the local Dockerfile
+- **`container_name`**: Sets a predictable container name
+- **`ports`**: Maps host port 3978 to container port 3978
+- **`environment`**: Overrides HOST to bind to all interfaces
+- **`env_file`**: Loads additional environment variables from `.env`
+- **`restart`**: Automatically restarts container unless manually stopped
+- **`healthcheck`**: Monitors application health using `/health` endpoint
+
+**Customization Options:**
+
+```yaml
+# Use different port mapping
+ports:
+  - "8080:3978"  # Access via http://localhost:8080
+
+# Add volume mounts for development
+volumes:
+  - ./src:/app/src:ro  # Mount source code as read-only
+
+# Set custom environment variables
+environment:
+  - HOST=0.0.0.0
+  - PORT=3978
+  - LOG_LEVEL=DEBUG
+  - ENVIRONMENT=development
+
+# Use external networks
+networks:
+  - my-network
+
+# Add dependencies
+depends_on:
+  - redis
+  - postgres
+```
+
+#### Docker Compose Quick Reference
+
+**Essential Commands:**
+```bash
+# Start services
+docker-compose up                    # Start in foreground
+docker-compose up -d                 # Start in background (detached)
+docker-compose up --build           # Rebuild and start
+docker-compose up -d --build        # Rebuild and start in background
+
+# Build and manage
+docker-compose build                 # Build images only
+docker-compose build --no-cache     # Build without using cache
+docker-compose pull                 # Pull latest base images
+
+# Stop and cleanup
+docker-compose stop                  # Stop services
+docker-compose down                  # Stop and remove containers
+docker-compose down -v              # Stop, remove containers and volumes
+docker-compose down --rmi all       # Stop and remove containers and images
+
+# Monitoring and debugging
+docker-compose ps                    # Show running services
+docker-compose logs                  # Show all logs
+docker-compose logs -f              # Follow logs in real-time
+docker-compose logs -f fastapi-agent # Follow logs for specific service
+docker-compose exec fastapi-agent bash # Execute shell in running container
+
+# Restart and maintenance
+docker-compose restart               # Restart all services
+docker-compose restart fastapi-agent # Restart specific service
+docker-compose up -d --force-recreate # Force recreate containers
+```
+
+**Troubleshooting Commands:**
+```bash
+# Check service health
+docker-compose ps
+docker inspect fastapi-auto-signin-agent
+
+# View detailed logs
+docker-compose logs --tail 50 fastapi-agent
+
+# Rebuild from scratch
+docker-compose down -v --rmi all
+docker-compose up -d --build
+
+# Test connectivity
+docker-compose exec fastapi-agent curl http://localhost:3978/health
+```
 
 **For external deployment platforms**, you can use the `create_app` factory function from `src.app_factory` to get a configured FastAPI instance.
 
