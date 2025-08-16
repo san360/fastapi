@@ -1,0 +1,21 @@
+{
+  "resourceGroupName": "rg-fastapi-agent",
+  "location": "eastus",
+  "acrName": "acrfastapi20250816",
+  "appServicePlanName": "asp-fastapi-agent",
+  "appServiceName": "app-fastapi-agent-20250816",
+  "imageName": "fastapi-auto-signin-agent",
+  "acrSku": "Basic",
+  "appServiceSku": "B1",
+  "tags": {
+    "project": "fastapi-auto-signin-agent",
+    "environment": "production",
+    "created-by": "azure-deployment-script"
+  },
+  "appSettings": {
+    "WEBSITES_PORT": "3978",
+    "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "false",
+    "HOST": "0.0.0.0",
+    "PORT": "3978"
+  }
+}

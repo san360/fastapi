@@ -1,0 +1,77 @@
+name: Cleanup Azure Resources
+
+on:
+  workflow_dispatch:
+    inputs:
+      resource_group:
+        description: 'Azure Resource Group Name to delete'
+        required: true
+        default: 'rg-fastapi-agent'
+      confirm_deletion:
+        description: 'Type "DELETE" to confirm resource deletion'
+        required: true
+        type: string
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm_deletion == 'DELETE'
+    
+    steps:
+    - name: 🔐 Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
+    - name: 📋 List Resources Before Deletion
+      run: |
+        echo "## Resources to be deleted in ${{ github.event.inputs.resource_group }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if az group show --name "${{ github.event.inputs.resource_group }}" > /dev/null 2>&1; then
+          echo "Resource group exists. Listing resources:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          az resource list --resource-group "${{ github.event.inputs.resource_group }}" --output table >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Resource group ${{ github.event.inputs.resource_group }} does not exist." >> $GITHUB_STEP_SUMMARY
+          exit 1
+        fi
+        
+    - name: 🗑️ Delete Resource Group
+      run: |
+        echo "Deleting resource group: ${{ github.event.inputs.resource_group }}"
+        az group delete \
+          --name "${{ github.event.inputs.resource_group }}" \
+          --yes \
+          --no-wait
+          
+        echo "✅ Resource group deletion initiated" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "The deletion process will continue in the background." >> $GITHUB_STEP_SUMMARY
+        echo "It may take several minutes to complete." >> $GITHUB_STEP_SUMMARY
+        
+    - name: ✅ Cleanup Complete
+      run: |
+        echo "🎉 Cleanup process initiated successfully!"
+        echo "Resource group '${{ github.event.inputs.resource_group }}' is being deleted."
+        echo "This process will continue in the background and may take several minutes."
+        
+  validate_input:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm_deletion != 'DELETE'
+    
+    steps:
+    - name: ❌ Invalid Confirmation
+      run: |
+        echo "## ❌ Cleanup Cancelled" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Resource deletion was not confirmed." >> $GITHUB_STEP_SUMMARY
+        echo "To delete resources, you must type 'DELETE' exactly in the confirmation field." >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Safety feature**: This prevents accidental resource deletion." >> $GITHUB_STEP_SUMMARY
+        
+        echo "❌ Cleanup cancelled - confirmation required"
+        echo "You must type 'DELETE' exactly to confirm resource deletion."
+        exit 1
