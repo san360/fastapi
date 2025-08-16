@@ -191,7 +191,7 @@ PORT=3978
 
 ## 🏃‍♂️ Running the Application
 
-### Development Mode
+### Development Mode (Local)
 ```bash
 # Activate virtual environment first
 # Windows: .\venv\Scripts\Activate.ps1
@@ -201,7 +201,7 @@ PORT=3978
 python main.py
 ```
 
-### Production Mode
+### Production Mode (Local)
 ```bash
 # Start the application (recommended)
 python main.py
@@ -210,7 +210,126 @@ python main.py
 uvicorn src.app_factory:create_app --factory --host 0.0.0.0 --port 3978
 ```
 
-**Note**: For external deployment platforms, you can use the `create_app` factory function from `src.app_factory` to get a configured FastAPI instance.
+### 🐳 Docker Deployment
+
+#### Quick Start with Docker
+
+For the fastest Docker setup, use the provided scripts:
+
+**Windows (PowerShell):**
+```powershell
+# Copy Docker environment template
+Copy-Item .env.docker .env
+
+# Edit .env with your Azure credentials
+# Then run the PowerShell script
+.\docker-run.ps1
+```
+
+**Linux/macOS:**
+```bash
+# Copy Docker environment template
+cp .env.docker .env
+
+# Edit .env with your Azure credentials
+# Then run the bash script
+chmod +x docker-run.sh
+./docker-run.sh
+```
+
+#### Using Docker Compose (Recommended)
+
+1. **Setup Environment Variables**
+   ```bash
+   # Copy and configure environment file
+   cp env.TEMPLATE .env
+   
+   # Edit .env with your Azure credentials
+   # The docker-compose.yml will automatically use these variables
+   ```
+
+2. **Build and Run with Docker Compose**
+   ```bash
+   # Build and start the container
+   docker-compose up --build
+   
+   # Run in detached mode (background)
+   docker-compose up -d --build
+   
+   # View logs
+   docker-compose logs -f fastapi-agent
+   
+   # Stop the container
+   docker-compose down
+   ```
+
+#### Using Docker Directly
+
+1. **Build the Docker Image**
+   ```bash
+   docker build -t fastapi-auto-signin-agent .
+   ```
+
+2. **Run the Container**
+   ```bash
+   # Run with environment file
+   docker run -d \
+     --name fastapi-agent \
+     --env-file .env \
+     -p 3978:3978 \
+     fastapi-auto-signin-agent
+   
+   # Or run with environment variables directly
+   docker run -d \
+     --name fastapi-agent \
+     -p 3978:3978 \
+     -e CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID=your-client-id \
+     -e CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET=your-client-secret \
+     -e CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID=your-tenant-id \
+     -e HOST=0.0.0.0 \
+     -e PORT=3978 \
+     fastapi-auto-signin-agent
+   ```
+
+3. **Docker Container Management**
+   ```bash
+   # View container logs
+   docker logs -f fastapi-agent
+   
+   # Stop the container
+   docker stop fastapi-agent
+   
+   # Remove the container
+   docker rm fastapi-agent
+   
+   # Remove the image
+   docker rmi fastapi-auto-signin-agent
+   ```
+
+#### Environment Variables for Docker
+
+When running in Docker, ensure these environment variables are properly set:
+
+```env
+# Azure AD Configuration
+CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID=your-client-id
+CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET=your-client-secret
+CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID=your-tenant-id
+
+# Microsoft Graph Connection
+AGENTAPPLICATION__USERAUTHORIZATION__HANDLERS__GRAPH__SETTINGS__AZUREBOTOAUTHCONNECTIONNAME=GRAPH
+
+# GitHub Connection (optional)
+AGENTAPPLICATION__USERAUTHORIZATION__HANDLERS__GITHUB__SETTINGS__AZUREBOTOAUTHCONNECTIONNAME=GITHUB
+
+# Server Configuration (Important: Use 0.0.0.0 for Docker)
+HOST=0.0.0.0
+PORT=3978
+```
+
+**Note**: When running in Docker, always use `HOST=0.0.0.0` instead of `localhost` to allow external connections to the container.
+
+**For external deployment platforms**, you can use the `create_app` factory function from `src.app_factory` to get a configured FastAPI instance.
 
 The server will start at: `http://localhost:3978`
 
@@ -309,7 +428,13 @@ sequenceDiagram
 fastapi-auto-signin-agent/
 ├── main.py                 # 🎯 Single entry point
 ├── requirements.txt        # 📦 Python dependencies  
+├── Dockerfile             # 🐳 Docker container configuration
+├── docker-compose.yml     # 🐙 Docker Compose setup
+├── docker-run.sh          # 🚀 Docker run script (Linux/macOS)
+├── docker-run.ps1         # 🚀 Docker run script (Windows)
+├── .dockerignore          # 🚫 Docker ignore patterns
 ├── .env                   # 🔐 Environment variables (create from template)
+├── .env.docker            # 🐳 Docker environment template
 ├── .gitignore            # 🚫 Git ignore patterns
 ├── env.TEMPLATE          # 📝 Environment template
 └── src/
@@ -365,10 +490,61 @@ fastapi-auto-signin-agent/
    pip install -r requirements.txt
    ```
 
+### Docker-Specific Issues
+
+4. **Container fails to start**
+   ```bash
+   # Check container logs
+   docker-compose logs fastapi-agent
+   
+   # Ensure environment variables are set correctly
+   # Verify .env file exists and contains HOST=0.0.0.0
+   ```
+
+5. **Environment variables not loading**
+   ```bash
+   # Ensure .env file exists and has correct format
+   # Check that HOST=0.0.0.0 for Docker containers (not localhost)
+   # Verify docker-compose.yml env_file section points to .env
+   ```
+
+6. **Port binding issues in Docker**
+   ```bash
+   # Check if port is already in use on host
+   netstat -an | findstr :3978
+   
+   # Use different port mapping in docker-compose.yml
+   # Change ports: - "3979:3978" to use host port 3979
+   ```
+
+7. **Health check failures**
+   ```bash
+   # Container must bind to 0.0.0.0:3978 not localhost:3978
+   # Check logs for "Uvicorn running on http://0.0.0.0:3978"
+   # If you see localhost:3978, environment variables aren't loaded
+   # Verify .env file has HOST=0.0.0.0
+   ```
+
+8. **"ERR_EMPTY_RESPONSE" when accessing localhost**
+   ```bash
+   # This happens when app binds to localhost inside container
+   # Solution: Ensure HOST=0.0.0.0 in .env file
+   # Restart container: docker-compose restart fastapi-agent
+   ```
+
 ### Logs
+
 Check application logs for detailed error information:
+
 ```bash
+# Local development
 python main.py 2>&1 | tee app.log
+
+# Docker container
+docker logs -f fastapi-agent
+
+# Docker Compose
+docker-compose logs -f fastapi-agent
 ```
 
 ## 📚 Documentation
