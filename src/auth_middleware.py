@@ -4,14 +4,32 @@
 """
 JWT Authentication middleware for FastAPI.
 Handles token validation using Microsoft Agents SDK.
+
+⚠️ SECURITY WARNING:
+- Set LOG_JWT_TOKENS=true ONLY in development/testing environments
+- NEVER enable JWT token logging in production
+- JWT tokens contain sensitive authentication information
+- Logged tokens can be used to impersonate users if exposed
 """
 
+import os
 import logging
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from microsoft.agents.hosting.core.authorization import JwtTokenValidator
+from microsoft_agents.hosting.core.authorization import JwtTokenValidator
 
 logger = logging.getLogger(__name__)
+
+# ⚠️ SECURITY: Enable JWT token logging only for debugging (DO NOT USE IN PRODUCTION)
+LOG_JWT_TOKENS = os.environ.get("LOG_JWT_TOKENS", "false").lower() == "true"
+
+if LOG_JWT_TOKENS:
+    logger.warning("=" * 80)
+    logger.warning("⚠️  SECURITY WARNING: JWT TOKEN LOGGING IS ENABLED ⚠️")
+    logger.warning("JWT tokens will be logged in plaintext - USE ONLY FOR TESTING!")
+    logger.warning("NEVER enable this in production environments!")
+    logger.warning("Set LOG_JWT_TOKENS=false to disable token logging")
+    logger.warning("=" * 80)
 
 class JWTAuthMiddleware:
     """JWT Authentication middleware handler."""
@@ -48,10 +66,31 @@ class JWTAuthMiddleware:
                     {"error": "Invalid Authorization header format"}, 
                     status_code=401
                 )
-                
-            logger.debug(f"Validating JWT token: {token[:20]}...")
+            
+            # ⚠️ SECURITY: Log full JWT token ONLY if LOG_JWT_TOKENS is enabled (testing only)
+            if LOG_JWT_TOKENS:
+                logger.warning("=" * 80)
+                logger.warning("⚠️  FULL JWT TOKEN (SENSITIVE - FOR TESTING ONLY):")
+                logger.warning(f"Token: {token}")
+                logger.warning(f"Length: {len(token)} characters")
+                logger.warning("=" * 80)
+            else:
+                logger.debug(f"Validating JWT token: {token[:20]}...{token[-20:]} (truncated)")
+            
             claims = self.token_validator.validate_token(token)
+            
+            # Log claims information
             logger.debug(f"JWT token validated successfully. Claims: {claims.claims}")
+            
+            if LOG_JWT_TOKENS:
+                logger.warning("⚠️  DECODED TOKEN CLAIMS (SENSITIVE - FOR TESTING ONLY):")
+                logger.warning(f"Issuer (iss): {claims.claims.get('iss')}")
+                logger.warning(f"Audience (aud): {claims.claims.get('aud')}")
+                logger.warning(f"Subject (sub): {claims.claims.get('sub')}")
+                logger.warning(f"Expiration (exp): {claims.claims.get('exp')}")
+                logger.warning(f"Service URL: {claims.claims.get('serviceurl')}")
+                logger.warning(f"All claims: {claims.claims}")
+                logger.warning("=" * 80)
             
             request.state.claims_identity = claims
             return True, None

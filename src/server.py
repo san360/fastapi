@@ -17,13 +17,14 @@ def start_server():
     # Create the application
     app = create_app()
     
-    # Start the server
+    # Start the server with debug logging
     uvicorn.run(
         app,
         host=config.host,
         port=config.port,
-        log_level="info",
-        reload=False
+        log_level="debug",
+        reload=False,
+        access_log=True
     )
 
 if __name__ == "__main__":

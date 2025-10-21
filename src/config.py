@@ -9,7 +9,7 @@ Centralizes all environment variables and configuration settings.
 import logging
 from os import environ
 from dotenv import load_dotenv
-from microsoft.agents.activity import load_configuration_from_env
+from microsoft_agents.activity import load_configuration_from_env
 
 class AppConfig:
     """Application configuration manager."""

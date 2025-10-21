@@ -10,7 +10,7 @@ import json
 import logging
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
-from microsoft.agents.hosting.aiohttp import start_agent_process
+from microsoft_agents.hosting.aiohttp import start_agent_process
 from .request_adapter import FastAPIToAioHttpRequestAdapter
 
 logger = logging.getLogger(__name__)
