@@ -1,0 +1,50 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.22/MicrosoftTeams.schema.json",
+  "version": "1.0.0",
+  "manifestVersion": "1.22",
+  "id": "c9ae37cd-9a98-4828-b040-9d8c21181aaa",
+  "name": { "short": "Finance Agent", "full": "Finance Agent" },
+  "developer": {
+    "name": "Nestlé",
+    "websiteUrl": "https://www.nestle.com",
+    "privacyUrl": "https://www.nestle.com/info/privacy",
+    "termsOfUseUrl": "https://www.nestle.com/info/tc"
+  },
+  "description": {
+    "short": "Finance Agent",
+    "full": "Finance Agent"
+  },
+  "icons": { "outline": "outline.png", "color": "color.png" },
+  "accentColor": "#a6ffd2",
+  "bots": [
+    {
+      "botId": "b0d96126-a9f6-48fd-ab15-eda13a7d6529",
+      "scopes": ["copilot", "personal", "team"],
+      "commandLists": [
+        {
+          "commands": [
+            {
+              "title": "How can you help me?",
+              "description": "How can you help me?"
+            }
+          ],
+          "scopes": ["personal"]
+        }
+      ],
+      "isNotificationOnly": false,
+      "supportsCalling": false,
+      "supportsVideo": false,
+      "supportsFiles": false
+    }
+  ],
+  "validDomains": ["token.botframework.com"],
+  "webApplicationInfo": {
+    "id": "083f5ec6-e8ee-4a0a-8e38-c6a6a0cfeb35",
+    "resource": "api://botid-b0d96126-a9f6-48fd-ab15-eda13a7d6529"
+  },
+  "copilotAgents": {
+    "customEngineAgents": [
+      { "type": "bot", "id": "b0d96126-a9f6-48fd-ab15-eda13a7d6529" }
+    ]
+  }
+}

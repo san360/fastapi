@@ -1,0 +1,57 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.22/MicrosoftTeams.schema.json",
+  "version": "1.0.0",
+  "manifestVersion": "1.22",
+  "id": "c9ae37cd-9a98-4828-b040-9d8c21181aaa",
+  "name": {
+    "short": "FastAPI Auto Sign-In Agent",
+    "full": "FastAPI Auto Sign-In Agent"
+  },
+  "developer": {
+    "name": "Microsoft",
+    "websiteUrl": "https://www.microsoft.com",
+    "privacyUrl": "https://www.microsoft.com/info/privacy",
+    "termsOfUseUrl": "https://www.microsoft.com/info/tc"
+  },
+  "description": {
+    "short": "FastAPI Auto Sign-In Agent - Teams bot with SSO & GitHub",
+    "full": "A sophisticated FastAPI application that demonstrates seamless integration with Microsoft Bot Framework and Agents SDK, featuring automatic sign-in capabilities for Microsoft Graph and GitHub APIs. The application is containerized using Docker and deployed to Azure with enterprise-grade security. Features automatic sign-in (SSO) for Microsoft Graph and GitHub commands."
+  },
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+  "accentColor": "#a6ffd2",
+  "bots": [
+    {
+      "botId": "cc451968-4dc2-46f3-9b4f-f8eae2782b25",
+      "scopes": [
+        "copilot",
+        "personal",
+        "team"
+      ],
+      "supportsFiles": false,
+      "isNotificationOnly": false,
+      "commandLists": [
+        {
+          "commands": [
+            {
+              "title": "How can you help me?",
+              "description": "How can you help me?"
+            }
+          ],
+          "scopes": [
+            "personal"
+          ]
+        }
+      ]
+    }
+  ],
+  "validDomains": [
+    "token.botframework.com"
+  ],
+  "webApplicationInfo": {
+    "id": "cc451968-4dc2-46f3-9b4f-f8eae2782b25",
+    "resource": "api://botid-cc451968-4dc2-46f3-9b4f-f8eae2782b25"
+  }
+}

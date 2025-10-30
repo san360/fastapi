@@ -61,6 +61,7 @@ from microsoft_agents.authentication.msal import MsalConnectionManager
 from .github_api_client import get_current_profile, get_pull_requests
 from .user_graph_client import get_user_info
 from .cards import create_profile_card, create_pr_card
+from .teams_sso_handler import handle_teams_sso_token_exchange
 
 logger = logging.getLogger(__name__)
 
@@ -243,18 +244,30 @@ async def pull_requests(context: TurnContext, state: TurnState) -> None:
 
 
 @AGENT_APP.activity(ActivityTypes.invoke)
-async def invoke(context: TurnContext, state: TurnState) -> None:
+async def handle_invoke_activity(context: TurnContext, state: TurnState) -> None:
     """
-    Handle invoke activities.
+    Handle invoke activities including Teams SSO token exchange.
+
+    Supported invoke types:
+    - signin/tokenExchange: Teams SSO token exchange (automatic sign-in)
+    - Other: Generic invoke handling
     """
-    await context.send_activity(MessageFactory.text("Invoke activity received in FastAPI server."))
+
+    activity_name = context.activity.name
+    logger.info(f"Invoke activity received: {activity_name}")
+
+    # Check if this is a Teams SSO token exchange request
+    if activity_name == "signin/tokenExchange":
+        # Use Microsoft Agents SDK to exchange Teams token for Graph/GitHub token
+        await handle_teams_sso_token_exchange(context, state, AGENT_APP.auth)
+    else:
+        # Handle other invoke types
+        await context.send_activity(
+            MessageFactory.text(f"Invoke activity '{activity_name}' received")
+        )
 
 
-@AGENT_APP.activity(ActivityTypes.message)
-async def message(context: TurnContext, state: TurnState) -> None:
-    """
-    Handle general message activities.
-    """
-    await context.send_activity(
-        MessageFactory.text(f"You said: {context.activity.text} (processed by FastAPI)")
-    )
+# Note: Catch-all message handler removed to prevent duplicate responses.
+# All messages are now handled by specific route handlers above:
+# - /status, /me, /prs, /logout, /test, /debug
+# Unhandled messages will be silently ignored by the bot.
