@@ -219,13 +219,6 @@ async def profile_request(context: TurnContext, state: TurnState) -> None:
     logger.info(f"Activity Type: {context.activity.type}")
     logger.info(f"Activity Text: {context.activity.text}")
     logger.info(f"Activity Timestamp: {context.activity.timestamp}")
-
-    # Log the call stack to understand where this call is coming from
-    import traceback
-    logger.info("📞 Call stack (showing last 6 frames):")
-    for line in traceback.format_stack()[-7:-1]:
-        logger.info(line.rstrip())
-
     logger.info(f"Attempting to get GRAPH token...")
 
     user_token_response = await AGENT_APP.auth.get_token(context, "GRAPH")
@@ -299,8 +292,17 @@ async def handle_invoke_activity(context: TurnContext, _state: TurnState) -> Non
     # DIAGNOSTIC - Log all invoke activities for troubleshooting
     logger.info("=" * 80)
     logger.info("🔍 DIAGNOSTIC - Invoke activity received")
+    logger.info(f"🔍 Activity ID: {context.activity.id}")
     logger.info(f"🔍 Activity Type: {context.activity.type}")
     logger.info(f"🔍 Activity Name: {context.activity.name}")
+    logger.info(f"🔍 Activity Timestamp: {context.activity.timestamp}")
+
+    # Log token exchange resource ID for diagnostic purposes
+    if context.activity.name == "signin/tokenExchange" and context.activity.value:
+        token_exchange_id = context.activity.value.get("id")
+        if token_exchange_id:
+            logger.info(f"🔍 Token Exchange Resource ID: {token_exchange_id}")
+
     logger.info("=" * 80)
 
     # DO NOT send response - the framework's _OAuthFlow already handles signin/tokenExchange
