@@ -54,7 +54,11 @@ from microsoft_agents.hosting.core import (
     TurnState,
     MemoryStorage,
 )
-from microsoft_agents.activity import activity, load_configuration_from_env, ActivityTypes, Activity
+from microsoft_agents.activity import (
+    activity,
+    load_configuration_from_env,
+    ActivityTypes,
+)
 from microsoft_agents.hosting.aiohttp import CloudAdapter
 from microsoft_agents.authentication.msal import MsalConnectionManager
 
@@ -122,13 +126,47 @@ async def status(context: TurnContext, state: TurnState) -> bool:
     )
 
 
+@AGENT_APP.message("/ping")
+async def ping(context: TurnContext, state: TurnState) -> None:
+    """
+    Simple test command to verify no duplication.
+    """
+    logger.info("=" * 80)
+    logger.info("=== PING Handler Called ===")
+    logger.info(f"Activity ID: {context.activity.id}")
+    logger.info("=" * 80)
+
+    await context.send_activity(MessageFactory.text("🏓 Pong!"))
+
+    logger.info("=== PING Handler Completed ===")
+
+
 @AGENT_APP.message("/logout")
 async def logout(context: TurnContext, state: TurnState) -> None:
     """
     Sign out the user from all authentication handlers.
     """
-    await AGENT_APP.auth.sign_out(context, state)
-    await context.send_activity(MessageFactory.text("You have been logged out."))
+    logger.info("=" * 80)
+    logger.info("=== LOGOUT Handler Called ===")
+
+    # Sign out from GRAPH
+    try:
+        await AGENT_APP.auth.sign_out(context, "GRAPH")
+        logger.info("Signed out from GRAPH")
+    except Exception as e:
+        logger.error(f"Error signing out from GRAPH: {e}")
+
+    # Sign out from GITHUB
+    try:
+        await AGENT_APP.auth.sign_out(context, "GITHUB")
+        logger.info("Signed out from GITHUB")
+    except Exception as e:
+        logger.error(f"Error signing out from GITHUB: {e}")
+
+    await context.send_activity(MessageFactory.text("✅ Signed out from all services."))
+
+    logger.info("=== LOGOUT Handler Completed ===")
+    logger.info("=" * 80)
 
 
 @AGENT_APP.message(re.compile(r"^/(test|debug)$", re.IGNORECASE))
@@ -175,32 +213,49 @@ async def profile_request(context: TurnContext, state: TurnState) -> None:
     """
     Get user profile information from Microsoft Graph API.
     """
-    logger.info("=== Profile Request ===")
+    logger.info("=" * 80)
+    logger.info("=== Profile Request Handler Called ===")
+    logger.info(f"Activity ID: {context.activity.id}")
+    logger.info(f"Activity Type: {context.activity.type}")
+    logger.info(f"Activity Text: {context.activity.text}")
+    logger.info(f"Activity Timestamp: {context.activity.timestamp}")
+
+    # Log the call stack to understand where this call is coming from
+    import traceback
+    logger.info("📞 Call stack (showing last 6 frames):")
+    for line in traceback.format_stack()[-7:-1]:
+        logger.info(line.rstrip())
+
     logger.info(f"Attempting to get GRAPH token...")
-    
+
     user_token_response = await AGENT_APP.auth.get_token(context, "GRAPH")
-    
+
     logger.info(f"Token response received: {user_token_response is not None}")
     if user_token_response:
         logger.info(f"Token available: {user_token_response.token is not None}")
         if user_token_response.token:
             logger.info(f"Token length: {len(user_token_response.token)}")
-    
+
     if user_token_response and user_token_response.token is not None:
         try:
+            logger.info("✅ Token obtained - fetching user profile from Microsoft Graph")
             user_info = await get_user_info(user_token_response.token)
             activity = MessageFactory.attachment(create_profile_card(user_info))
+            logger.info("📤 Sending profile card to user")
             await context.send_activity(activity)
+            logger.info("✅ Profile card sent successfully")
         except Exception as e:
             logger.error(f"Error getting user profile: {e}", exc_info=True)
             await context.send_activity(
                 MessageFactory.text(f"Error getting user profile: {str(e)}")
             )
     else:
-        logger.warning("No token available - sign-in required")
-        await context.send_activity(
-            MessageFactory.text('Token not available. The sign-in prompt should have appeared. Please click "Sign in" to authenticate.')
-        )
+        # DO NOT send any message - the framework will automatically send the sign-in card
+        # and continue this handler after authentication succeeds
+        logger.info("⚠️  No token available - framework will handle OAuth flow and continuation")
+
+    logger.info("=== Profile Request Handler Completed ===")
+    logger.info("=" * 80)
 
 
 @AGENT_APP.message(
@@ -224,30 +279,11 @@ async def pull_requests(context: TurnContext, state: TurnState) -> None:
             for pr in prs:
                 card = create_pr_card(pr)
                 await context.send_activity(MessageFactory.attachment(card))
-                
+
         except Exception as e:
             logger.error(f"Error getting GitHub data: {e}")
             await context.send_activity(
                 MessageFactory.text(f"Error getting GitHub data: {str(e)}")
-            )
-    else:
-        try:
-            token_response = await AGENT_APP.auth.begin_or_continue_flow(
-                context, state, "GITHUB"
-            )
-            logger.warning(f"GitHub token: {json.dumps(token_response)}")
-            if token_response and token_response.token is not None:
-                await context.send_activity(
-                    MessageFactory.text(f"GitHub token length: {len(token_response.token)}")
-                )
-            else:
-                await context.send_activity(
-                    MessageFactory.text("Failed to obtain GitHub token.")
-                )
-        except Exception as e:
-            logger.error(f"Error in GitHub auth flow: {e}")
-            await context.send_activity(
-                MessageFactory.text(f"Error in GitHub authentication: {str(e)}")
             )
 
 
@@ -257,7 +293,8 @@ async def handle_invoke_activity(context: TurnContext, _state: TurnState) -> Non
     Handle invoke activities.
 
     Note: signin/tokenExchange is handled automatically by the Microsoft Agents SDK's
-    internal OAuth flow. No custom code needed for Teams SSO token exchange.
+    internal OAuth flow which sends its own InvokeResponse. This handler only logs
+    for diagnostic purposes - the framework handles the actual response.
     """
     # DIAGNOSTIC - Log all invoke activities for troubleshooting
     logger.info("=" * 80)
@@ -266,10 +303,8 @@ async def handle_invoke_activity(context: TurnContext, _state: TurnState) -> Non
     logger.info(f"🔍 Activity Name: {context.activity.name}")
     logger.info("=" * 80)
 
-    # Simple acknowledgment - framework handles tokenExchange automatically
-    await context.send_activity(
-        MessageFactory.text(f"Invoke activity received: {context.activity.name}")
-    )
+    # DO NOT send response - the framework's _OAuthFlow already handles signin/tokenExchange
+    # and sends the appropriate InvokeResponse automatically
 
 
 # Note: Catch-all message handler removed to prevent duplicate responses.

@@ -87,11 +87,22 @@ class MessageHandler:
         return adapter
     
     def _convert_response(self, response) -> JSONResponse:
-        """Convert aiohttp response to FastAPI JSONResponse."""
+        """
+        Convert aiohttp response to FastAPI JSONResponse.
+
+        For Bot Framework, always return 200 OK after successful message processing.
+        The bot communicates with users through activities, not HTTP status codes.
+        """
+        logger.debug(f"Response data: {getattr(response, 'body', None)}")
+
+        # Always return 200 OK for successfully processed bot messages
+        # Bot Framework expects this regardless of the internal response status
         if hasattr(response, 'body') and response.body:
-            response_data = json.loads(response.body.decode('utf-8')) if response.body else {}
-            logger.debug(f"Response data: {response_data}")
-            return JSONResponse(content=response_data, status_code=response.status)
+            try:
+                response_data = json.loads(response.body.decode('utf-8'))
+                return JSONResponse(content=response_data, status_code=200)
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                logger.warning(f"Failed to parse response body: {e}")
+                return JSONResponse(content={"status": "ok"}, status_code=200)
         else:
-            logger.debug("Returning default OK response")
             return JSONResponse(content={"status": "ok"}, status_code=200)
