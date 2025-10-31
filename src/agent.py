@@ -88,6 +88,15 @@ async def status(context: TurnContext, state: TurnState) -> bool:
     Internal method to check authorization status for all configured handlers.
     Returns True if at least one handler has a valid token.
     """
+    # DIAGNOSTIC: Log activity details
+    logger.info("=" * 80)
+    logger.info("🔍 DIAGNOSTIC - Incoming Activity Details:")
+    logger.info(f"🔍 Activity Type: {context.activity.type}")
+    logger.info(f"🔍 Activity Name: {getattr(context.activity, 'name', 'N/A')}")
+    logger.info(f"🔍 Activity Text: {context.activity.text}")
+    logger.info(f"🔍 Channel ID: {context.activity.channel_id}")
+    logger.info("=" * 80)
+
     await context.send_activity(MessageFactory.text("Welcome to the FastAPI auto-signin demo"))
     
     # Log OAuth connection configuration for debugging
@@ -243,18 +252,27 @@ async def pull_requests(context: TurnContext, state: TurnState) -> None:
 
 
 @AGENT_APP.activity(ActivityTypes.invoke)
-async def invoke(context: TurnContext, state: TurnState) -> None:
+async def handle_invoke_activity(context: TurnContext, _state: TurnState) -> None:
     """
     Handle invoke activities.
-    """
-    await context.send_activity(MessageFactory.text("Invoke activity received in FastAPI server."))
 
+    Note: signin/tokenExchange is handled automatically by the Microsoft Agents SDK's
+    internal OAuth flow. No custom code needed for Teams SSO token exchange.
+    """
+    # DIAGNOSTIC - Log all invoke activities for troubleshooting
+    logger.info("=" * 80)
+    logger.info("🔍 DIAGNOSTIC - Invoke activity received")
+    logger.info(f"🔍 Activity Type: {context.activity.type}")
+    logger.info(f"🔍 Activity Name: {context.activity.name}")
+    logger.info("=" * 80)
 
-@AGENT_APP.activity(ActivityTypes.message)
-async def message(context: TurnContext, state: TurnState) -> None:
-    """
-    Handle general message activities.
-    """
+    # Simple acknowledgment - framework handles tokenExchange automatically
     await context.send_activity(
-        MessageFactory.text(f"You said: {context.activity.text} (processed by FastAPI)")
+        MessageFactory.text(f"Invoke activity received: {context.activity.name}")
     )
+
+
+# Note: Catch-all message handler removed to prevent duplicate responses.
+# All messages are now handled by specific route handlers above:
+# - /status, /me, /prs, /logout, /test, /debug
+# Unhandled messages will be silently ignored by the bot.
