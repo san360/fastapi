@@ -65,6 +65,7 @@ from microsoft_agents.authentication.msal import MsalConnectionManager
 from .github_api_client import get_current_profile, get_pull_requests
 from .user_graph_client import get_user_info
 from .cards import create_profile_card, create_pr_card
+from .openai_handler import handle_openai_message, handle_clear_history, handle_help
 
 logger = logging.getLogger(__name__)
 
@@ -309,7 +310,33 @@ async def handle_invoke_activity(context: TurnContext, _state: TurnState) -> Non
     # and sends the appropriate InvokeResponse automatically
 
 
-# Note: Catch-all message handler removed to prevent duplicate responses.
-# All messages are now handled by specific route handlers above:
-# - /status, /me, /prs, /logout, /test, /debug
-# Unhandled messages will be silently ignored by the bot.
+# OpenAI-powered message handlers
+
+@AGENT_APP.message(re.compile(r"^/(help|commands)$", re.IGNORECASE))
+async def help_command(context: TurnContext, state: TurnState) -> bool:
+    """
+    Display help message with available commands.
+    """
+    await handle_help(context, state)
+    return True
+
+
+@AGENT_APP.message(re.compile(r"^/(clear|reset)$", re.IGNORECASE))
+async def clear_command(context: TurnContext, state: TurnState) -> bool:
+    """
+    Clear conversation history.
+    """
+    await handle_clear_history(context, state)
+    return True
+
+
+@AGENT_APP.message(re.compile(r"^(?!/).*", re.IGNORECASE))
+async def openai_message_handler(context: TurnContext, state: TurnState) -> bool:
+    """
+    Handle all non-command messages with OpenAI.
+
+    This catches any message that doesn't start with '/' and processes it
+    through the OpenAI service for intelligent responses.
+    """
+    await handle_openai_message(context, state, use_conversation_history=True)
+    return True

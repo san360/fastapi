@@ -6,3 +6,4 @@ microsoft-agents-activity
 microsoft-agents-hosting-core
 microsoft-agents-hosting-aiohttp
 microsoft-agents-authentication-msal
+openai>=1.0.0
