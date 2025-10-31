@@ -61,7 +61,6 @@ from microsoft_agents.authentication.msal import MsalConnectionManager
 from .github_api_client import get_current_profile, get_pull_requests
 from .user_graph_client import get_user_info
 from .cards import create_profile_card, create_pr_card
-from .teams_sso_handler import handle_teams_sso_token_exchange
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +88,15 @@ async def status(context: TurnContext, state: TurnState) -> bool:
     Internal method to check authorization status for all configured handlers.
     Returns True if at least one handler has a valid token.
     """
+    # DIAGNOSTIC: Log activity details
+    logger.info("=" * 80)
+    logger.info("🔍 DIAGNOSTIC - Incoming Activity Details:")
+    logger.info(f"🔍 Activity Type: {context.activity.type}")
+    logger.info(f"🔍 Activity Name: {getattr(context.activity, 'name', 'N/A')}")
+    logger.info(f"🔍 Activity Text: {context.activity.text}")
+    logger.info(f"🔍 Channel ID: {context.activity.channel_id}")
+    logger.info("=" * 80)
+
     await context.send_activity(MessageFactory.text("Welcome to the FastAPI auto-signin demo"))
     
     # Log OAuth connection configuration for debugging
@@ -244,27 +252,24 @@ async def pull_requests(context: TurnContext, state: TurnState) -> None:
 
 
 @AGENT_APP.activity(ActivityTypes.invoke)
-async def handle_invoke_activity(context: TurnContext, state: TurnState) -> None:
+async def handle_invoke_activity(context: TurnContext, _state: TurnState) -> None:
     """
-    Handle invoke activities including Teams SSO token exchange.
+    Handle invoke activities.
 
-    Supported invoke types:
-    - signin/tokenExchange: Teams SSO token exchange (automatic sign-in)
-    - Other: Generic invoke handling
+    Note: signin/tokenExchange is handled automatically by the Microsoft Agents SDK's
+    internal OAuth flow. No custom code needed for Teams SSO token exchange.
     """
+    # DIAGNOSTIC - Log all invoke activities for troubleshooting
+    logger.info("=" * 80)
+    logger.info("🔍 DIAGNOSTIC - Invoke activity received")
+    logger.info(f"🔍 Activity Type: {context.activity.type}")
+    logger.info(f"🔍 Activity Name: {context.activity.name}")
+    logger.info("=" * 80)
 
-    activity_name = context.activity.name
-    logger.info(f"Invoke activity received: {activity_name}")
-
-    # Check if this is a Teams SSO token exchange request
-    if activity_name == "signin/tokenExchange":
-        # Use Microsoft Agents SDK to exchange Teams token for Graph/GitHub token
-        await handle_teams_sso_token_exchange(context, state, AGENT_APP.auth)
-    else:
-        # Handle other invoke types
-        await context.send_activity(
-            MessageFactory.text(f"Invoke activity '{activity_name}' received")
-        )
+    # Simple acknowledgment - framework handles tokenExchange automatically
+    await context.send_activity(
+        MessageFactory.text(f"Invoke activity received: {context.activity.name}")
+    )
 
 
 # Note: Catch-all message handler removed to prevent duplicate responses.

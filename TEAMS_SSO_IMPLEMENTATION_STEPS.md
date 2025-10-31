@@ -1,29 +1,37 @@
-# Teams SSO Implementation Guide - Complete Steps
+# Teams SSO Implementation Guide - Microsoft Agents SDK
 
 ## Overview
 
-This guide provides **everything** you need to implement Teams Single Sign-On (SSO) using **only Microsoft Agents SDK** - no deprecated Bot Framework SDK required.
+This guide shows how to configure Teams Single Sign-On (SSO) for your bot using **Microsoft Agents SDK for Python**. By following these steps, you'll enable seamless authentication for Teams users.
 
 ### What You'll Achieve
 
 **Current State**: Users must click "Sign in" and complete OAuth flow every time (10-15 seconds)
 
-**After Implementation**:
-
+**After SSO Configuration**:
 - First time: One-click inline consent (2 seconds)
 - Every subsequent time: Instant response (< 1 second, no sign-in!)
 
+### How Teams SSO Works
+
+Teams SSO eliminates the need for users to manually sign in to your bot. When properly configured:
+
+1. **First time**: User sees inline consent dialog (one-click approval)
+2. **All subsequent times**: Instant authentication (no prompts)
+3. **Automatic token management**: Framework handles token exchange and storage
+
+The Microsoft Agents SDK provides built-in SSO support through the `auth_handlers` parameter on route decorators.
+
 ### Prerequisites
 
-- ✅ Your bot deployed on Azure App Service (you have this)
 - ✅ Microsoft Agents SDK installed (you have this)
 - ✅ Azure Bot Service resource created (you have this)
-- ✅ Microsoft Entra ID app registration (you have this: cc451968-4dc2-46f3-9b4f-f8eae2782b25)
+- ✅ Microsoft Entra ID app registration (cc451968-4dc2-46f3-9b4f-f8eae2782b25)
 - ✅ Admin access to Azure Portal
 
 ### Estimated Time
 
-- **Code changes**: 5 minutes
+- **Code verification**: 5 minutes
 - **Azure/Entra configuration**: 20 minutes
 - **Teams app creation**: 10 minutes
 - **Testing**: 10 minutes
@@ -34,131 +42,103 @@ This guide provides **everything** you need to implement Teams Single Sign-On (S
 ## Quick Start Summary
 
 ```text
-1. Update agent.py (add 2 code blocks)
+1. Verify your code uses auth_handlers decorators (you already have this)
 2. Configure Entra ID (Application ID URI + scopes)
 3. Update Azure Bot OAuth (enable token exchange)
-4. Create Teams app manifest
-5. Package and sideload to Teams
-6. Test and verify SSO works
+4. Create Teams app manifest with webApplicationInfo
+5. Package and upload to Teams
+6. Test - SSO works automatically!
 ```
 
 ---
 
-## PART 1: CODE CHANGES
+## PART 1: CODE VERIFICATION
 
-### Step 1.1: Add Teams SSO Handler Import
+### Your Code is Already Correct!
 
-**File**: `src/agent.py`
-
-**Location**: After line 59 (after existing imports)
-
-**Add this import**:
+Your existing code in `src/agent.py` already follows the correct pattern:
 
 ```python
-# Existing imports (keep these - lines 48-59)
-from microsoft_agents.hosting.core import (
-    Authorization,
-    TurnContext,
-    MessageFactory,
-    MemoryStorage,
-    AgentApplication,
-    TurnState,
+# ✅ THIS IS THE CORRECT PATTERN (you already have this!)
+@AGENT_APP.message(
+    re.compile(r"^/(me|profile)$", re.IGNORECASE),
+    auth_handlers=["GRAPH"]  # ← This triggers automatic SSO!
 )
-from microsoft_agents.activity import activity, load_configuration_from_env, ActivityTypes, Activity
-from microsoft_agents.hosting.aiohttp import CloudAdapter
-from microsoft_agents.authentication.msal import MsalConnectionManager
+async def profile_request(context: TurnContext, state: TurnState) -> None:
+    """
+    Get Microsoft Graph profile.
 
-# ADD THIS NEW IMPORT (after line 59):
-from .teams_sso_handler import handle_teams_sso_token_exchange
+    The auth_handlers parameter tells the framework to require authentication.
+    The framework automatically handles signin/tokenExchange for Teams SSO.
+    """
+    logger.info("=== Profile Request ===")
+
+    # Get token (framework handles SSO automatically)
+    user_token_response = await AGENT_APP.auth.get_token(context, "GRAPH")
+
+    if user_token_response and user_token_response.token:
+        # Use the token
+        user_info = await get_user_info(user_token_response.token)
+        await context.send_activity(MessageFactory.attachment(create_profile_card(user_info)))
+    else:
+        await context.send_activity(MessageFactory.text("Unable to get token"))
 ```
 
-### Step 1.2: Replace Invoke Handler
+### Invoke Handler Pattern
 
-**File**: `src/agent.py`
-
-**Location**: Lines 245-250
-
-**Replace this code**:
+Your invoke handler should be minimal (the framework processes tokenExchange internally):
 
 ```python
+# ✅ CORRECT - Minimal invoke handler
 @AGENT_APP.activity(ActivityTypes.invoke)
-async def invoke(context: TurnContext, state: TurnState) -> None:
+async def handle_invoke_activity(context: TurnContext, _state: TurnState) -> None:
     """
     Handle invoke activities.
+
+    Note: signin/tokenExchange is handled automatically by the Microsoft Agents SDK's
+    internal OAuth flow. No custom code needed for Teams SSO token exchange.
     """
-    await context.send_activity(MessageFactory.text("Invoke activity received in FastAPI server."))
+    logger.info(f"Invoke activity received: {context.activity.name}")
+
+    # Simple acknowledgment - framework handles tokenExchange automatically
+    await context.send_activity(
+        MessageFactory.text(f"Invoke activity received: {context.activity.name}")
+    )
 ```
 
-**With this code**:
+### SSO Authentication Flow
 
-```python
-@AGENT_APP.activity(ActivityTypes.invoke)
-async def handle_invoke_activity(context: TurnContext, state: TurnState) -> None:
-    """
-    Handle invoke activities including Teams SSO token exchange.
+When SSO is properly configured in Azure:
 
-    Supported invoke types:
-    - signin/tokenExchange: Teams SSO token exchange (automatic sign-in)
-    - Other: Generic invoke handling
-    """
-
-    activity_name = context.activity.name
-    logger.info(f"Invoke activity received: {activity_name}")
-
-    # Check if this is a Teams SSO token exchange request
-    if activity_name == "signin/tokenExchange":
-        # Use Microsoft Agents SDK to exchange Teams token for Graph/GitHub token
-        await handle_teams_sso_token_exchange(context, state, AGENT_APP.auth)
-    else:
-        # Handle other invoke types
-        await context.send_activity(
-            MessageFactory.text(f"Invoke activity '{activity_name}' received")
-        )
+```text
+User sends /me command
+  ↓
+Framework checks for existing token → None found
+  ↓
+Framework requests authentication
+  ↓
+Teams displays inline consent dialog (first time only)
+  ↓
+User clicks "Continue"
+  ↓
+Teams exchanges token with bot automatically
+  ↓
+Token stored → Profile displayed instantly
 ```
 
-### Step 1.3: Verify teams_sso_handler.py Exists
-
-**File**: `src/teams_sso_handler.py`
-
-This file was already created for you. Verify it exists:
-
-```bash
-# Check file exists
-ls src/teams_sso_handler.py
-```
-
-If it doesn't exist, you have the full implementation in your codebase already created.
-
-### Step 1.4: Deploy Code Changes
-
-```bash
-# Option A: Git push (if using GitHub Actions)
-git add src/agent.py src/teams_sso_handler.py
-git commit -m "feat: Add Teams SSO support using Microsoft Agents SDK"
-git push
-
-# Option B: Direct Azure deployment
-az webapp up --name app-fastapi-agent-1755331446 --resource-group rg-fastapi-agent
-
-# Option C: Docker (if using containers)
-docker build -t fastapibot:latest .
-docker push <your-acr>.azurecr.io/fastapibot:latest
-az webapp restart --name app-fastapi-agent-1755331446 --resource-group rg-fastapi-agent
-```
+All subsequent `/me` commands use the stored token with no user interaction required.
 
 ---
 
-## PART 2: MICROSOFT ENTRA ID (AZURE AD) CONFIGURATION
+## PART 2: MICROSOFT ENTRA ID CONFIGURATION
 
 ### Step 2.1: Navigate to Your App Registration
 
 ```text
 1. Open Azure Portal: https://portal.azure.com
 2. Search for "Microsoft Entra ID" (or "Azure Active Directory")
-3. Click on it
-4. In left menu, click "App registrations"
-5. Find and click your bot's app: cc451968-4dc2-46f3-9b4f-f8eae2782b25
-   (Search by Client ID or app name)
+3. Click "App registrations" (left menu)
+4. Find your bot: cc451968-4dc2-46f3-9b4f-f8eae2782b25
 ```
 
 ### Step 2.2: Configure Application ID URI
@@ -166,262 +146,182 @@ az webapp restart --name app-fastapi-agent-1755331446 --resource-group rg-fastap
 This URI identifies your bot to Teams for SSO.
 
 ```text
-1. In your app registration, click "Expose an API" (left menu)
+1. Click "Expose an API" (left menu)
 
-2. Click "Add" next to "Application ID URI" (at the top)
+2. Click "Add" next to "Application ID URI"
 
-3. You'll see a pre-filled value like:
-   api://cc451968-4dc2-46f3-9b4f-f8eae2782b25
-
-4. CHANGE IT TO (add "botid-" prefix):
+3. IMPORTANT: Set it to (add "botid-" prefix):
    api://botid-cc451968-4dc2-46f3-9b4f-f8eae2782b25
 
-5. Click "Save"
+4. Click "Save"
 ```
 
-**Why this format?** Teams expects `api://botid-{AppId}` for bot SSO.
+**Why this format?** Teams requires `api://botid-{AppId}` for bot SSO.
 
 ### Step 2.3: Add OAuth Scope
 
-This scope allows Teams to request access on behalf of the user.
-
 ```text
 1. Still in "Expose an API" section
 
-2. Click "Add a scope" button
+2. Click "Add a scope"
 
-3. Fill in the form:
-
+3. Fill in:
    Scope name: access_as_user
-
    Who can consent?: Admins and users
-
    Admin consent display name: Access bot as user
-
-   Admin consent description:
-   Allows Teams to call the bot's web APIs as the current user
-
+   Admin consent description: Allows Teams to call the bot's APIs as the current user
    User consent display name: Access bot as you
-
-   User consent description:
-   Allows the bot to access Microsoft Graph on your behalf
-
+   User consent description: Allows the bot to access Microsoft Graph on your behalf
    State: Enabled
 
 4. Click "Add scope"
-
-5. You should now see: api://botid-{AppId}/access_as_user
 ```
+
+You should now see: `api://botid-cc451968-4dc2-46f3-9b4f-f8eae2782b25/access_as_user`
 
 ### Step 2.4: Authorize Teams Clients
 
-Teams has two client applications (desktop/mobile and web) that need pre-authorization.
+Pre-authorize Teams apps to request tokens without consent prompts.
 
 ```text
-1. Still in "Expose an API" section
+1. Still in "Expose an API" → "Authorized client applications"
 
-2. Scroll down to "Authorized client applications"
+2. Click "Add a client application"
 
-3. Click "Add a client application"
-
-4. Add Teams Desktop/Mobile client:
+3. Add Teams Desktop/Mobile:
    Client ID: 1fec8e78-bce4-4aaf-ab1b-5451cc387264
    ✓ Check: api://botid-{YourAppId}/access_as_user
    Click "Add application"
 
-5. Click "Add a client application" again
+4. Click "Add a client application" again
 
-6. Add Teams Web client:
+5. Add Teams Web:
    Client ID: 5e3ce6c0-2b1f-4285-8d4b-75ee78787346
    ✓ Check: api://botid-{YourAppId}/access_as_user
    Click "Add application"
 
-7. You should now see 2 authorized applications listed
+You should now see 2 authorized applications.
 ```
 
-**What this does**: Pre-authorizes Teams to request tokens without showing consent to users each time.
-
-### Step 2.5: Verify API Permissions
-
-Ensure your app has the correct Microsoft Graph permissions.
+### Step 2.5: Grant Admin Consent
 
 ```text
 1. Click "API permissions" (left menu)
 
-2. You should see:
-   - Microsoft Graph → User.Read (Delegated) → Granted for [Your Org]
+2. You should see: Microsoft Graph → User.Read (Delegated)
 
-3. If "Granted for [Your Org]" status is not there:
-   Click "Grant admin consent for [Your Organization]"
-   Click "Yes" to confirm
+3. Click "Grant admin consent for [Your Organization]"
 
-4. Status should change to green checkmark: "Granted for [Your Org]"
-```
+4. Click "Yes"
 
-### Step 2.6: Verify Authentication Settings (Optional)
-
-Check that your app accepts tokens correctly.
-
-```text
-1. Click "Authentication" (left menu)
-
-2. Under "Platform configurations", you should see:
-   - Web platform with redirect URIs including:
-     https://token.botframework.com/.auth/web/redirect
-
-3. Under "Supported account types":
-   - Should be: "Accounts in this organizational directory only"
-     OR "Accounts in any organizational directory"
-
-4. Under "Implicit grant and hybrid flows":
-   - NOT needed for bot SSO (can be unchecked)
-
-5. No changes needed here, just verify it looks correct
+5. Status should show: "Granted for [Your Org]" with green checkmark
 ```
 
 ---
 
 ## PART 3: AZURE BOT SERVICE CONFIGURATION
 
-### Step 3.1: Navigate to Bot Resource
+### Step 3.1: Navigate to Bot OAuth Settings
 
 ```text
-1. Azure Portal → Search for "Bot Service" or your bot name
-2. Click on your bot resource
-3. In left menu, click "Configuration"
+1. Azure Portal → Search for your bot resource
+2. Click "Configuration" (left menu)
+3. Scroll to "OAuth Connection Settings" section
+4. Click on your "GRAPH" connection
 ```
 
-### Step 3.2: Enable Token Exchange for OAuth Connection
+### Step 3.2: Enable Token Exchange
+
+This is the **critical step** that enables Teams SSO!
 
 ```text
-1. Scroll down to "OAuth Connection Settings" section
+1. In the OAuth connection configuration form
 
-2. Click on your "GRAPH" connection (or whatever you named it)
+2. Scroll down to find "Token Exchange URL" field (textbox)
 
-3. You'll see the OAuth connection configuration form
-
-4. Scroll down and find "Token Exchange URL" field (it's a textbox)
-
-5. In the "Token Exchange URL" textbox, enter:
+3. In the "Token Exchange URL" textbox, enter:
    https://token.botframework.com/api/oauth/token
 
-6. Verify other settings are correct:
+4. Verify other settings:
    Service Provider: Azure Active Directory v2
    Client ID: cc451968-4dc2-46f3-9b4f-f8eae2782b25
    Client Secret: (your secret - hidden)
    Tenant ID: 2bab7b85-25a5-40d1-a83e-77d201b4da49
    Scopes: openid profile offline_access User.Read
 
-7. Click "Save" at the bottom
+5. Click "Save"
 
-8. Wait for "Successfully saved" message
+6. Wait for "Successfully saved" confirmation
 ```
 
-**Critical**: The connection name in Azure ("GRAPH") must EXACTLY match your .env file:
-
+**Critical**: Connection name "GRAPH" must match your .env:
 ```bash
 AGENTAPPLICATION__USERAUTHORIZATION__HANDLERS__GRAPH__SETTINGS__AZUREBOTOAUTHCONNECTIONNAME=GRAPH
 ```
 
-### Step 3.3: Verify Teams Channel is Enabled
+### Step 3.3: Verify Teams Channel
 
 ```text
-1. In your bot resource, click "Channels" (left menu)
-
-2. You should see "Microsoft Teams" with status "Running"
-
-3. If not enabled:
-   - Click "Microsoft Teams" icon
-   - Click "Apply"
-   - Teams channel will be enabled
+1. Click "Channels" (left menu)
+2. Microsoft Teams should show status "Running"
+3. If not enabled, click the Teams icon → Apply
 ```
 
 ---
 
 ## PART 4: CREATE TEAMS APP MANIFEST
 
-### Step 4.1: Create Directory Structure
+### Step 4.1: Manifest Configuration
 
-```bash
-# Create directory for Teams app
-mkdir teams-app
-cd teams-app
-```
+Your manifest at `teams-app/manifest.json` should have:
 
-### Step 4.2: Create manifest.json
-
-**File**: `teams-app/manifest.json`
-
-**Content** (copy this exactly, it's ready to use):
+**Critical SSO Configuration:**
 
 ```json
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
-  "manifestVersion": "1.17",
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.22/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.22",
   "version": "1.0.0",
+
   "id": "cc451968-4dc2-46f3-9b4f-f8eae2782b25",
-  "packageName": "com.yourcompany.fastapibot",
-  "developer": {
-    "name": "Your Company Name",
-    "websiteUrl": "https://yourcompany.com",
-    "privacyUrl": "https://yourcompany.com/privacy",
-    "termsOfUseUrl": "https://yourcompany.com/terms"
-  },
-  "icons": {
-    "color": "color.png",
-    "outline": "outline.png"
-  },
+
   "name": {
-    "short": "FastAPI Bot",
-    "full": "FastAPI Auto Sign-In Agent with SSO"
+    "short": "FastAPI Auto Sign-In Agent",
+    "full": "FastAPI Auto Sign-In Agent"
   },
+
+  "developer": {
+    "name": "Microsoft",
+    "websiteUrl": "https://www.microsoft.com",
+    "privacyUrl": "https://www.microsoft.com/info/privacy",
+    "termsOfUseUrl": "https://www.microsoft.com/info/tc"
+  },
+
   "description": {
-    "short": "Bot with Teams SSO",
-    "full": "FastAPI bot demonstrating automatic sign-in using Teams SSO with Microsoft Agents SDK"
+    "short": "FastAPI Auto Sign-In Agent - Teams bot with SSO",
+    "full": "A FastAPI bot with Teams SSO and GitHub integration"
   },
-  "accentColor": "#FFFFFF",
-  "bots": [
-    {
-      "botId": "cc451968-4dc2-46f3-9b4f-f8eae2782b25",
-      "scopes": ["personal"],
-      "supportsFiles": false,
-      "isNotificationOnly": false,
-      "commandLists": [
-        {
-          "scopes": ["personal"],
-          "commands": [
-            {
-              "title": "status",
-              "description": "Check authentication status"
-            },
-            {
-              "title": "me",
-              "description": "Get your Microsoft Graph profile (with SSO!)"
-            },
-            {
-              "title": "prs",
-              "description": "Get GitHub pull requests"
-            },
-            {
-              "title": "logout",
-              "description": "Sign out from all services"
-            },
-            {
-              "title": "test",
-              "description": "Test OAuth configuration"
-            }
-          ]
-        }
-      ]
-    }
-  ],
-  "permissions": [
-    "identity",
-    "messageTeamMembers"
-  ],
+
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+
+  "accentColor": "#a6ffd2",
+
+  "bots": [{
+    "botId": "cc451968-4dc2-46f3-9b4f-f8eae2782b25",
+    "scopes": ["personal"],
+    "supportsFiles": false,
+    "isNotificationOnly": false
+  }],
+
+  "permissions": ["identity", "messageTeamMembers"],
+
   "validDomains": [
     "token.botframework.com"
   ],
+
   "webApplicationInfo": {
     "id": "cc451968-4dc2-46f3-9b4f-f8eae2782b25",
     "resource": "api://botid-cc451968-4dc2-46f3-9b4f-f8eae2782b25"
@@ -429,698 +329,326 @@ cd teams-app
 }
 ```
 
-**Critical Fields Explained**:
+**Critical fields for SSO:**
 
-- `id` and `botId`: Your bot's Azure AD App ID
+- `id` and `botId`: Must be your Azure AD App ID
 - `webApplicationInfo.id`: Same App ID
-- `webApplicationInfo.resource`: MUST match the Application ID URI from Step 2.2
-- `validDomains`: Required for Bot Framework OAuth flows
+- `webApplicationInfo.resource`: Must match Application ID URI from Step 2.2
+- `validDomains`: Required for Bot Framework OAuth
 
-**Customize** (optional):
+### Step 4.2: Icon Requirements
 
-- `packageName`: Use your company domain
-- `developer.*`: Update with your company info
-- `name.short`: Keep under 30 characters
-- `description.short`: Keep under 80 characters
+You need proper icons:
 
-### Step 4.3: Create Icons
-
-You need two icon files:
-
-**color.png**:
-
+**color.png:**
 - Size: 192x192 pixels
 - Format: PNG with transparency
-- Usage: Full color bot logo/avatar
 
-**outline.png**:
-
+**outline.png:**
 - Size: 32x32 pixels
 - Format: PNG with transparency
-- Content: White outline icon on transparent background
+- White outline on transparent background
 
-**Quick icon creation options**:
+Your icons are already created at correct dimensions ✓
 
-```bash
-# Option 1: Use online tools
-# - https://favicon.io/ (convert text/emoji to icons)
-# - https://www.canva.com/ (design custom icons)
+### Step 4.3: Package the App
 
-# Option 2: Use placeholders for testing
-# Download generic icons:
-# - Search "bot icon png 192x192" for color.png
-# - Search "bot icon outline 32x32" for outline.png
+Use the provided PowerShell script to package your Teams app:
 
-# Option 3: Use your company logo
-# - Resize to 192x192 (color.png)
-# - Create white outline version at 32x32 (outline.png)
+```powershell
+# Run the packaging script
+.\package-teams-app.ps1
 ```
 
-Place both files in the `teams-app` directory:
+This script will:
 
-```text
-teams-app/
-├── manifest.json
-├── color.png (192x192)
-└── outline.png (32x32)
-```
+- Verify all required files exist (manifest.json, color.png, outline.png)
+- Create FastAPIBot.zip with proper structure
+- Validate the ZIP contents
+
+**Note**: Files must be in the root of the ZIP, not in a subfolder.
 
 ---
 
-## PART 5: PACKAGE AND DEPLOY TO TEAMS
+## PART 5: DEPLOY TO TEAMS
 
-### Step 5.1: Create Teams App Package
-
-```bash
-# Navigate to teams-app directory
-cd teams-app
-
-# Verify all files are present
-ls
-# Should see: manifest.json, color.png, outline.png
-
-# Create ZIP package
-# Windows PowerShell:
-Compress-Archive -Path manifest.json,color.png,outline.png -DestinationPath FastAPIBot.zip -Force
-
-# Linux/Mac:
-zip FastAPIBot.zip manifest.json color.png outline.png
-
-# Verify ZIP was created
-ls FastAPIBot.zip
-```
-
-**Important**: Files must be in the ROOT of the ZIP, not in a subfolder.
+### Step 5.1: Upload to Teams
 
 ```text
-✓ Correct:
-  FastAPIBot.zip
-  ├── manifest.json
-  ├── color.png
-  └── outline.png
+1. Open Microsoft Teams (desktop or web)
 
-✗ Wrong:
-  FastAPIBot.zip
-  └── teams-app/
-      ├── manifest.json
-      ├── color.png
-      └── outline.png
+2. Click "Apps" in left sidebar
+
+3. Click "Manage your apps" (bottom left)
+
+4. Click "Upload an app" → "Upload a custom app"
+
+5. Select FastAPIBot.zip
+
+6. Click "Add" to install
 ```
 
-### Step 5.2: Sideload App to Teams
-
-**Option A: Via Teams Desktop/Web App**:
-
-```text
-1. Open Microsoft Teams (desktop or web app)
-
-2. Click "Apps" in the left sidebar
-
-3. At the bottom left, click "Manage your apps"
-
-4. Click "Upload an app"
-
-5. Select "Upload a custom app"
-
-6. Browse and select FastAPIBot.zip
-
-7. Click "Add" to install for yourself
-   (Or "Add to a team" to install for a team)
-
-8. The bot should now appear in your "Apps built for your org" section
-```
-
-**Option B: Via Teams Admin Center (for org-wide deployment)**:
-
-```text
-1. Go to https://admin.teams.microsoft.com
-
-2. In left menu, expand "Teams apps" → click "Manage apps"
-
-3. Click "Upload new app" (top right)
-
-4. Upload FastAPIBot.zip
-
-5. Review and approve the app
-
-6. Set policies to make it available to users
-
-7. Users can find it in Teams app store
-```
-
-### Step 5.3: Add Bot to Chat
+### Step 5.2: Start Chat with Bot
 
 ```text
 1. In Teams, go to "Chat"
 
-2. Click "New chat" button
+2. Click "New chat"
 
-3. In the search bar, type "FastAPI Bot"
+3. Search for "FastAPI Auto Sign-In Agent"
 
-4. Select your bot from the results
+4. Select your bot
 
-5. A new chat window opens
-
-6. You're ready to test!
+5. Ready to test!
 ```
 
 ---
 
 ## PART 6: TEST AND VERIFY
 
-### Step 6.1: Test Basic Functionality
-
-First, verify the bot works without SSO:
+### Step 6.1: Test Basic Command
 
 ```text
-In Teams chat with your bot, type:
-
-/status
+Type in Teams chat: /status
 
 Expected response:
 "Welcome to the FastAPI auto-signin demo
 Graph status: Not connected
 GitHub status: Not connected"
+
+✅ If this works, bot is responding correctly
 ```
 
-If this works, your bot is responding correctly. ✓
-
-### Step 6.2: Test Teams SSO Flow (First Time)
-
-Now test the SSO authentication:
+### Step 6.2: Test SSO (First Time)
 
 ```text
-In Teams chat, type:
-
-/me
+Type in Teams chat: /me
 
 Expected behavior (first time):
-1. Consent dialog appears (inline in Teams):
+1. Inline consent dialog appears in Teams:
    "FastAPI Bot wants to access your profile"
    [Continue] [Cancel]
 
 2. Click "Continue"
 
-3. Profile card appears within 1-2 seconds showing:
-   - Your display name
-   - Your email
-   - Your job title
+3. Profile appears within 1-2 seconds:
+   - Display name
+   - Email
+   - Job title
    - Profile picture
 
-4. NO SIGN-IN CARD should appear
-   (If you see a sign-in card, SSO is not working - see troubleshooting)
+4. NO SEPARATE SIGN-IN CARD should appear
 ```
 
-### Step 6.3: Test Subsequent Interactions
+**If you see a sign-in card with "Sign in" button:**
+- SSO is NOT configured correctly
+- Teams is falling back to standard OAuth
+- Review Azure configuration (Parts 2 & 3)
 
-Test that tokens are cached:
+### Step 6.3: Test Subsequent Requests
 
 ```text
-In Teams chat, type:
-
-/me
+Type in Teams chat: /me
 
 Expected behavior (subsequent times):
 - Profile appears INSTANTLY (< 1 second)
 - NO consent dialog
 - NO sign-in card
-- Just your profile card
+
+✅ This confirms SSO is working!
 ```
 
-### Step 6.4: Verify Logs
+### Step 6.4: Check Logs (Diagnostic)
 
-Check Azure logs to confirm SSO token exchange:
+If you added diagnostic logging to your invoke handler:
 
 ```bash
-# View live logs
+# View Azure App Service logs
 az webapp log tail \
   --name app-fastapi-agent-1755331446 \
   --resource-group rg-fastapi-agent
-
-# Or view in Azure Portal:
-# 1. Go to your App Service
-# 2. Left menu → Monitoring → Log stream
-# 3. Watch for log messages
 ```
 
-**Look for these log messages** when you type `/me`:
+**When SSO is working**, you'll see:
 
 ```text
-✅ "Invoke activity received: signin/tokenExchange"
-✅ "=== Teams SSO Token Exchange ==="
-✅ "Request ID: abc-123-..."
-✅ "Connection Name: GRAPH"
-✅ "Token received: True"
-✅ "✅ Token exchange successful!"
-✅ "Token stored for connection: GRAPH"
-✅ "Success response sent to Teams"
+🔍 DIAGNOSTIC - Invoke activity received
+🔍 Activity Type: invoke
+🔍 Activity Name: signin/tokenExchange
 ```
 
-**If you see errors**:
+**When SSO is NOT configured**, you'll see:
 
 ```text
-❌ "❌ Token exchange failed - no token returned"
-❌ "Invalid token exchange request format"
+🔍 DIAGNOSTIC - Incoming Activity Details:
+🔍 Activity Type: message  ← NOT invoke!
+🔍 Activity Text: /me
 ```
 
-See troubleshooting section below.
-
-### Step 6.5: Test Across Sessions
-
-```text
-1. Close Teams completely (or use different device)
-
-2. Open Teams again
-
-3. Navigate to your bot chat
-
-4. Type: /me
-
-5. Expected: Profile still appears instantly (token persisted)
-```
+If you see `type: message` instead of `type: invoke`, Teams is not sending SSO requests. Review Azure configuration.
 
 ---
 
 ## PART 7: TROUBLESHOOTING
 
-### Issue 1: No SSO - Still See Sign-In Card
+### Issue 1: Still See Sign-In Card (SSO Not Working)
 
-**Symptoms**: When typing `/me`, you see the old OAuth sign-in card instead of instant profile.
+**Symptoms**: OAuth sign-in card appears instead of instant profile
 
-**Possible Causes & Fixes**:
-
-```text
-A. Token exchange not enabled in Azure Bot
-
-Fix:
-→ Go to Part 3, Step 3.2
-→ Verify "Token Exchange URL" is checked and set to:
-  https://token.botframework.com/api/oauth/token
-→ Save changes
-
-B. webApplicationInfo missing from manifest
-
-Fix:
-→ Open teams-app/manifest.json
-→ Verify "webApplicationInfo" section exists:
-  {
-    "id": "cc451968-4dc2-46f3-9b4f-f8eae2782b25",
-    "resource": "api://botid-cc451968-4dc2-46f3-9b4f-f8eae2782b25"
-  }
-→ Repackage ZIP and redeploy
-
-C. Application ID URI not configured
-
-Fix:
-→ Go to Part 2, Step 2.2
-→ Verify Entra ID app has Application ID URI:
-  api://botid-cc451968-4dc2-46f3-9b4f-f8eae2782b25
-```
-
-### Issue 2: "SSO is not enabled for bot on Teams channel"
-
-**Symptoms**: Error message shown in Teams.
-
-**Causes & Fixes**:
+**Possible Causes:**
 
 ```text
-A. Wrong resource format in manifest
+A. Token Exchange URL not set
+   Fix: Go to Part 3, Step 3.2
+   Verify: https://token.botframework.com/api/oauth/token
 
-Fix:
-→ manifest.json → webApplicationInfo.resource must be:
-  api://botid-{AppId}
-  NOT: api://{AppId}
-  NOT: https://...
+B. Application ID URI missing or wrong format
+   Fix: Go to Part 2, Step 2.2
+   Must be: api://botid-cc451968-4dc2-46f3-9b4f-f8eae2782b25
+   NOT: api://cc451968-4dc2-46f3-9b4f-f8eae2782b25 (missing botid-)
 
-B. validDomains missing
+C. webApplicationInfo missing from manifest
+   Fix: Verify manifest.json has webApplicationInfo section
+   Resource must match Application ID URI exactly
 
-Fix:
-→ manifest.json → add:
-  "validDomains": ["token.botframework.com"]
+D. Teams clients not authorized
+   Fix: Go to Part 2, Step 2.4
+   Add both Teams client IDs
+
+E. Old Teams app cached
+   Fix: Remove bot from Teams, reinstall fresh ZIP
 ```
 
-### Issue 3: Token Exchange Fails in Logs
+### Issue 2: Consent Appears Every Time
 
-**Symptoms**: Logs show "Token exchange returned no token"
+**Symptoms**: Consent dialog on every `/me` command
 
-**Causes & Fixes**:
-
-```text
-A. Connection name mismatch
-
-Check:
-→ .env file: AGENTAPPLICATION__...CONNECTIONNAME=GRAPH
-→ Azure Bot OAuth connection name: GRAPH
-→ Both must match EXACTLY (case-sensitive)
-
-B. OAuth connection not configured for token exchange
-
-Fix:
-→ Part 3, Step 3.2 - set Token Exchange URL
-
-C. Invalid scopes
-
-Fix:
-→ Azure Bot OAuth connection must have scopes:
-  openid profile offline_access User.Read
-```
-
-### Issue 4: Consent Dialog Appears Every Time
-
-**Symptoms**: First-time consent keeps appearing on every `/me` command.
-
-**Causes & Fixes**:
+**Causes:**
 
 ```text
 A. Admin consent not granted
-
-Fix:
-→ Go to Part 2, Step 2.5
-→ Grant admin consent for your organization
+   Fix: Part 2, Step 2.5 - Grant admin consent
 
 B. Token not being stored
-
-Fix:
-→ Check STORAGE in agent.py is configured
-→ Currently using MemoryStorage (loses tokens on restart)
-→ Consider implementing persistent storage (see bonus section)
+   Fix: Verify MemoryStorage is configured in agent.py
+   Note: MemoryStorage loses tokens on restart
+   Consider: Implement persistent storage (BlobStorage)
 ```
 
-### Issue 5: Bot Not Responding at All
+### Issue 3: Bot Not Responding
 
-**Symptoms**: No response to any commands in Teams.
+**Symptoms**: No response to any commands
 
-**Causes & Fixes**:
+**Causes:**
 
 ```text
-A. Code not deployed
-
-Fix:
-→ Verify Step 1.4 was completed
-→ Check Azure App Service is running:
-  az webapp show --name app-fastapi-agent-1755331446 --query state
+A. Bot not deployed or not running
+   Fix: Check Azure App Service status
+   az webapp show --name app-fastapi-agent-1755331446 --query state
 
 B. Teams channel not enabled
+   Fix: Part 3, Step 3.3
 
-Fix:
-→ Part 3, Step 3.3 - enable Teams channel
-
-C. Bot endpoint incorrect
-
-Fix:
-→ Azure Bot → Configuration → Messaging endpoint should be:
-  https://app-fastapi-agent-1755331446.azurewebsites.net/api/messages
+C. Messaging endpoint incorrect
+   Fix: Azure Bot → Configuration → Messaging endpoint:
+   https://app-fastapi-agent-1755331446.azurewebsites.net/api/messages
 ```
 
 ### Debugging Checklist
 
-Use this checklist to diagnose issues:
-
 ```text
-Code Deployment:
-□ teams_sso_handler.py exists in src/
-□ agent.py updated with new import
-□ agent.py invoke handler replaced
-□ Code deployed to Azure
-□ App Service is running
+Code:
+□ Routes use auth_handlers=["GRAPH"] parameter
+□ Invoke handler is minimal (doesn't manually handle tokenExchange)
+□ Bot is deployed and running
 
-Entra ID Configuration:
-□ Application ID URI set: api://botid-{AppId}
+Entra ID:
+□ Application ID URI: api://botid-cc451968-4dc2-46f3-9b4f-f8eae2782b25
 □ Scope created: access_as_user
 □ Teams clients authorized (2 client IDs)
 □ Admin consent granted (green checkmark)
 
 Azure Bot Service:
-□ OAuth connection exists (GRAPH)
-□ Token Exchange URL is set
-□ Connection name matches .env
+□ OAuth connection: GRAPH
+□ Token Exchange URL: https://token.botframework.com/api/oauth/token
+□ Connection name matches .env file
 □ Teams channel enabled
 
 Teams App:
-□ manifest.json has webApplicationInfo
-□ resource matches Application ID URI
+□ manifest.json id matches bot App ID
+□ webApplicationInfo.resource matches Application ID URI
 □ validDomains includes token.botframework.com
-□ ZIP file created correctly (files in root)
+□ ZIP has files in root (not subfolder)
 □ App uploaded to Teams
 
 Testing:
-□ /status command works
-□ Logs show "signin/tokenExchange" invoke
-□ Logs show "✅ Token exchange successful!"
-□ /me returns profile without sign-in card
-```
-
----
-
-## PART 8: VERIFICATION & SUCCESS CRITERIA
-
-### How to Confirm SSO is Working
-
-✅ **SSO is working correctly if**:
-
-1. First `/me` command shows ONE-CLICK consent (not full OAuth flow)
-2. Subsequent `/me` commands show profile INSTANTLY
-3. NO sign-in card appears
-4. Logs show: "✅ Token exchange successful!"
-5. Works across Teams sessions (close/reopen Teams)
-6. Works on mobile Teams app too
-
-❌ **SSO is NOT working if**:
-
-1. You see the old sign-in card (blue button)
-2. Browser window opens for OAuth
-3. Consent appears every time you run `/me`
-4. Logs show: "❌ Token exchange failed"
-
-### Before vs After Comparison
-
-**Before (Standard OAuth)**:
-
-```text
-User: /me
-Bot: [Shows sign-in card with blue button]
-User: [Clicks sign-in button]
-Browser: [Opens OAuth consent page]
-User: [Enters credentials, grants consent]
-Browser: [Redirects back to Teams]
-Bot: [Shows profile]
-Time: 10-15 seconds
-```
-
-**After (Teams SSO)**:
-
-```text
-First time:
-User: /me
-Teams: [Shows inline consent - one click]
-User: [Clicks Continue]
-Bot: [Shows profile]
-Time: 2 seconds
-
-Every subsequent time:
-User: /me
-Bot: [Shows profile instantly]
-Time: < 1 second
-```
-
----
-
-## PART 9: NEXT STEPS & OPTIMIZATION
-
-### Optional Enhancements
-
-#### A. Add Persistent Token Storage
-
-Currently using `MemoryStorage` which loses tokens on restart. Upgrade to persistent storage:
-
-```python
-# src/agent.py - Replace MemoryStorage with BlobStorage
-
-from microsoft_agents.hosting.core import BlobStorage
-from os import environ
-
-STORAGE = BlobStorage(
-    container_name="bot-state",
-    account_name=environ.get("AZURE_STORAGE_ACCOUNT"),
-    account_key=environ.get("AZURE_STORAGE_KEY")
-)
-```
-
-Benefits:
-
-- Tokens survive bot restarts
-- Users never need to re-authenticate (until token expires ~90 days)
-
-#### B. Deploy Org-Wide
-
-After successful testing:
-
-```text
-1. Teams Admin Center → Manage apps → Upload FastAPIBot.zip
-2. Set policies to make available to all users
-3. Users find it in Teams app store
-4. No individual sideloading needed
-```
-
-#### C. Add GitHub SSO
-
-Enable SSO for GitHub too:
-
-```text
-1. Follow same steps for GITHUB OAuth connection
-2. Update manifest.json to request GitHub scopes
-3. Test /prs command with SSO
-```
-
-### Monitoring & Analytics
-
-Track SSO success rate:
-
-```python
-# Add telemetry to teams_sso_handler.py
-
-# Log successful exchanges
-logger.info(f"SSO_SUCCESS user={context.activity.from_property.id}")
-
-# Log failures
-logger.error(f"SSO_FAILED user={context.activity.from_property.id} error={error}")
-
-# Analyze logs to calculate:
-# - SSO success rate
-# - Most common errors
-# - User adoption
-```
-
----
-
-## PART 10: ROLLOUT STRATEGY
-
-### Phase 1: Personal Testing (Week 1)
-
-```text
-✓ Sideload app to yourself
-✓ Test all commands
-✓ Verify SSO works end-to-end
-✓ Check logs for errors
-✓ Document any issues
-```
-
-### Phase 2: Pilot Group (Week 2)
-
-```text
-✓ Sideload to 5-10 pilot users
-✓ Gather feedback on SSO experience
-✓ Monitor logs for errors
-✓ Fix any issues discovered
-✓ Measure sign-in time improvements
-```
-
-### Phase 3: Team Deployment (Week 3)
-
-```text
-✓ Submit to Teams Admin Center
-✓ Admin reviews and approves
-✓ Deploy to specific departments
-✓ Provide user documentation
-✓ Monitor adoption and feedback
-```
-
-### Phase 4: Organization-Wide (Week 4+)
-
-```text
-✓ Make available in Teams app store
-✓ Announce via company channels
-✓ Track usage metrics
-✓ Provide ongoing support
-✓ Iterate based on feedback
+□ /status works
+□ /me shows inline consent (first time)
+□ /me shows profile instantly (subsequent times)
+□ NO sign-in card appears
 ```
 
 ---
 
 ## SUMMARY
 
-### What We Accomplished
+### What Makes SSO Work
 
-✅ **Code**: Updated agent.py to handle Teams SSO token exchange
+**Three critical configurations:**
 
-✅ **Entra ID**: Configured Application ID URI, scopes, and authorized Teams clients
+1. **Entra ID**: Application ID URI = `api://botid-{AppId}` + authorized Teams clients
+2. **Azure Bot OAuth**: Token Exchange URL = `https://token.botframework.com/api/oauth/token`
+3. **Teams Manifest**: `webApplicationInfo` with matching `resource` URI
 
-✅ **Azure Bot**: Enabled token exchange for OAuth connections
+### Required Configuration Components
 
-✅ **Teams App**: Created manifest with SSO configuration
+**Code (already in place):**
+- Routes decorated with `auth_handlers=["GRAPH"]` parameter
+- Minimal invoke handler (framework handles token exchange automatically)
 
-✅ **Deployment**: Packaged and sideloaded to Teams for testing
+**Azure Configuration (must be configured):**
+- Entra ID Application ID URI with `api://botid-` prefix
+- OAuth scope `access_as_user` exposed
+- Teams clients pre-authorized
+- Bot Service Token Exchange URL enabled
 
-### Key Takeaways
+**Teams App (must be deployed):**
+- Manifest with `webApplicationInfo` section
+- Matching Application ID URI in `resource` field
 
-1. **Microsoft Agents SDK has everything** - No Bot Framework SDK v4 needed
-2. **Token exchange is automatic** - `AGENT_APP.auth.exchange_token()` handles it
-3. **Configuration is critical** - All IDs, URIs, and names must match exactly
-4. **SSO eliminates friction** - From 10-15 seconds to < 1 second
+### Key Files
 
-### Files Created
+**Your code** (already correct):
+- `src/agent.py` - Uses auth_handlers decorators ✓
 
-- `src/teams_sso_handler.py` - Token exchange logic
-- `teams-app/manifest.json` - Teams app configuration
-- `teams-app/FastAPIBot.zip` - Deployable Teams app package
+**Teams app** (created):
+- `teams-app/manifest.json` - SSO configuration ✓
+- `teams-app/color.png` - 192x192 icon ✓
+- `teams-app/outline.png` - 32x32 icon ✓
+- `teams-app/FastAPIBot.zip` - Deployable package ✓
 
-### Files Modified
+### Verification
 
-- `src/agent.py` - Added SSO invoke handler
+✅ **SSO is working when:**
+- **First `/me` command**: Inline consent dialog appears in Teams (one-click)
+- **User clicks "Continue"**: Profile displays within 2 seconds
+- **Subsequent `/me` commands**: Profile appears instantly (< 1 second)
+- **No sign-in card**: Users never see a separate "Sign in" button
 
-### Azure Resources Configured
+❌ **SSO is NOT working when:**
+- **Sign-in card appears**: Blue "Sign in" button displayed in chat
+- **Browser window opens**: OAuth authentication happens outside Teams
+- **Repeated consent**: Consent dialog appears every time
+- **Slow authentication**: Takes 10-15 seconds each time
 
-- Microsoft Entra ID App Registration
-- Azure Bot Service OAuth Connection
-- Teams Channel
+### References
 
----
-
-## APPENDIX: QUICK REFERENCE
-
-### Your Bot Details
-
-```text
-Bot Name: FastAPI Auto Sign-In Agent
-App ID: cc451968-4dc2-46f3-9b4f-f8eae2782b25
-Tenant ID: 2bab7b85-25a5-40d1-a83e-77d201b4da49
-Application ID URI: api://botid-cc451968-4dc2-46f3-9b4f-f8eae2782b25
-Messaging Endpoint: https://app-fastapi-agent-1755331446.azurewebsites.net/api/messages
-OAuth Connection Name: GRAPH
-```
-
-### Teams Client IDs
-
-```text
-Teams Desktop/Mobile: 1fec8e78-bce4-4aaf-ab1b-5451cc387264
-Teams Web: 5e3ce6c0-2b1f-4285-8d4b-75ee78787346
-```
-
-### Important URLs
-
-```text
-Azure Portal: https://portal.azure.com
-Entra ID: https://portal.azure.com/#view/Microsoft_AAD_IAM/ActiveDirectoryMenuBlade
-Teams Admin: https://admin.teams.microsoft.com
-Bot Service: https://portal.azure.com/#view/HubsExtension/BrowseResource/resourceType/Microsoft.BotService%2FbotServices
-```
-
-### Test Commands
-
-```text
-/status - Check authentication status
-/test - Show OAuth configuration
-/me - Get Microsoft Graph profile (tests SSO)
-/prs - Get GitHub pull requests
-/logout - Sign out from all services
-```
+- [Official Microsoft Auto Sign-In Sample](https://github.com/microsoft/Agents/tree/main/samples/python/auto-signin)
+- [Microsoft Agents SDK Overview](https://learn.microsoft.com/en-us/microsoft-365/agents-sdk/agents-sdk-overview)
+- [Teams Bot SSO Documentation](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/authentication/bot-sso-code)
 
 ---
 
 **Total Implementation Time**: ~45 minutes
 
 **Result**: Zero-friction authentication in Teams! 🎉
-
----
-
-**Need help?** Review the troubleshooting section or check Azure logs for error messages.

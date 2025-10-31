@@ -2,7 +2,7 @@
   "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.22/MicrosoftTeams.schema.json",
   "version": "1.0.0",
   "manifestVersion": "1.22",
-  "id": "c9ae37cd-9a98-4828-b040-9d8c21181aaa",
+  "id": "cc451968-4dc2-46f3-9b4f-f8eae2782b25",
   "name": {
     "short": "FastAPI Auto Sign-In Agent",
     "full": "FastAPI Auto Sign-In Agent"
@@ -26,9 +26,7 @@
     {
       "botId": "cc451968-4dc2-46f3-9b4f-f8eae2782b25",
       "scopes": [
-        "copilot",
-        "personal",
-        "team"
+        "personal"
       ],
       "supportsFiles": false,
       "isNotificationOnly": false,
