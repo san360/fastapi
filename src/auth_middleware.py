@@ -77,7 +77,7 @@ class JWTAuthMiddleware:
             else:
                 logger.debug(f"Validating JWT token: {token[:20]}...{token[-20:]} (truncated)")
             
-            claims = self.token_validator.validate_token(token)
+            claims = await self.token_validator.validate_token(token)
             
             # Log claims information
             logger.debug(f"JWT token validated successfully. Claims: {claims.claims}")

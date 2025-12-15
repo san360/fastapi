@@ -90,8 +90,8 @@ load_dotenv(path.join(path.dirname(__file__), ".env"))
 @AGENT_APP.message(re.compile(r"^/(status|auth status|check status)", re.IGNORECASE))
 async def status(context: TurnContext, state: TurnState) -> bool:
     """
-    Internal method to check authorization status for all configured handlers.
-    Returns True if at least one handler has a valid token.
+    Check authorization status for all configured handlers.
+    This handler checks token availability without triggering OAuth flows.
     """
     # DIAGNOSTIC: Log activity details
     logger.info("=" * 80)
@@ -111,10 +111,25 @@ async def status(context: TurnContext, state: TurnState) -> bool:
     logger.info(f"Client ID: {environ.get('CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID', 'NOT SET')}")
     logger.info("======================================")
     
-    tok_graph = await AGENT_APP.auth.get_token(context, "GRAPH")
-    tok_github = await AGENT_APP.auth.get_token(context, "GITHUB")
-    status_graph = tok_graph.token is not None
-    status_github = tok_github.token is not None
+    # Check GRAPH token (gracefully handle errors)
+    status_graph = False
+    try:
+        logger.info("🔍 Attempting to get GRAPH token for status check...")
+        tok_graph = await AGENT_APP.auth.get_token(context, "GRAPH")
+        status_graph = tok_graph and tok_graph.token is not None
+        logger.info(f"🔍 GRAPH token available: {status_graph}")
+    except Exception as e:
+        logger.warning(f"⚠️ Error checking GRAPH token: {e}")
+    
+    # Check GITHUB token (gracefully handle errors for unconfigured connections)
+    status_github = False
+    try:
+        logger.info("🔍 Attempting to get GITHUB token for status check...")
+        tok_github = await AGENT_APP.auth.get_token(context, "GITHUB")
+        status_github = tok_github and tok_github.token is not None
+        logger.info(f"🔍 GITHUB token available: {status_github}")
+    except Exception as e:
+        logger.warning(f"⚠️ Error checking GITHUB token (connection may not be configured): {e}")
     
     logger.info(f"Graph token available: {status_graph}")
     logger.info(f"GitHub token available: {status_github}")
@@ -122,7 +137,7 @@ async def status(context: TurnContext, state: TurnState) -> bool:
     await context.send_activity(
         MessageFactory.text(
             f"Graph status: {'Connected' if status_graph else 'Not connected'}\n"
-            f"GitHub status: {'Connected' if status_github else 'Not connected'}"
+            f"GitHub status: {'Connected' if status_github else 'Not connected (connection may not be configured)'}"
         )
     )
 
@@ -234,6 +249,7 @@ async def profile_request(context: TurnContext, state: TurnState) -> None:
         try:
             logger.info("✅ Token obtained - fetching user profile from Microsoft Graph")
             user_info = await get_user_info(user_token_response.token)
+            logger.info(f"📊 Microsoft Graph API Response: {json.dumps(user_info, indent=2)}")
             activity = MessageFactory.attachment(create_profile_card(user_info))
             logger.info("📤 Sending profile card to user")
             await context.send_activity(activity)
